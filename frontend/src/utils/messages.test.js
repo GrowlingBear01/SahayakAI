@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseTaskEvent } from "../hooks/useTaskEvents.js";
 import { coerceEdits, eventKey, fieldsWithKeys, isHttpUrl } from "./approval.js";
-import { TERMINAL_STATES, isStopCommand } from "./messages.js";
+import { TERMINAL_STATES, isStopCommand, recognitionErrorKey } from "./messages.js";
 
 describe("safety helpers", () => {
   it("recognizes stop commands without treating silence as approval", () => {
@@ -10,6 +10,14 @@ describe("safety helpers", () => {
     expect(isStopCommand("रुको")).toBe(true);
     expect(isStopCommand("")).toBe(false);
     expect(isStopCommand("yes")).toBe(false);
+  });
+
+  it("maps speech recognition failures to user-facing messages", () => {
+    expect(recognitionErrorKey("no-speech")).toBe("micNoSpeech");
+    expect(recognitionErrorKey("network")).toBe("micNetworkError");
+    expect(recognitionErrorKey("not-allowed")).toBe("micDenied");
+    expect(recognitionErrorKey("aborted")).toBeNull();
+    expect(recognitionErrorKey("unknown")).toBe("micRecognitionError");
   });
 
   it("never treats a fake URL as a live browser preview", () => {

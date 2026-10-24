@@ -377,8 +377,8 @@ export function useAssistant() {
   useEffect(() => {
     if (!voice.support.recognition) setVoiceError("micUnsupported");
     else if (voice.support.permission === "denied") setVoiceError("micDenied");
-    else setVoiceError(null);
-  }, [voice.support]);
+    else setVoiceError(voice.recognitionError);
+  }, [voice.recognitionError, voice.support]);
 
   const replay = useCallback(() => {
     if (!assistantText) return;

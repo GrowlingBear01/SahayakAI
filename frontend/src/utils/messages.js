@@ -52,6 +52,22 @@ export const copy = {
     en: "Microphone permission was denied. You can still type.",
     hi: "माइक्रोफ़ोन की अनुमति नहीं मिली। आप लिखकर जारी रख सकते हैं।",
   },
+  micNoSpeech: {
+    en: "No speech was detected. Try again or type your request.",
+    hi: "कोई आवाज़ नहीं मिली। फिर कोशिश करें या अनुरोध लिखें।",
+  },
+  micNetworkError: {
+    en: "Speech recognition could not reach its service. Check your connection or type your request.",
+    hi: "आवाज़ पहचान सेवा से संपर्क नहीं हो सका। कनेक्शन जाँचें या अनुरोध लिखें।",
+  },
+  micCaptureError: {
+    en: "The microphone could not be started. Check that it is connected and available.",
+    hi: "माइक्रोफ़ोन शुरू नहीं हो सका। जाँचें कि वह जुड़ा है और उपलब्ध है।",
+  },
+  micRecognitionError: {
+    en: "Speech recognition failed. Try again or type your request.",
+    hi: "आवाज़ पहचान विफल हुई। फिर कोशिश करें या अनुरोध लिखें।",
+  },
   micUnsupported: {
     en: "This browser does not support speech recognition. Typed input is available.",
     hi: "इस ब्राउज़र में आवाज़ पहचान उपलब्ध नहीं है। लिखकर अनुरोध भेजें।",
@@ -149,6 +165,24 @@ export function browserPrefersHindi() {
 
 export function recognitionLocale(lang) {
   return resolvedLang(lang) === "hi" ? "hi-IN" : "en-IN";
+}
+
+export function recognitionErrorKey(error) {
+  switch (error) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return "micDenied";
+    case "no-speech":
+      return "micNoSpeech";
+    case "network":
+      return "micNetworkError";
+    case "audio-capture":
+      return "micCaptureError";
+    case "aborted":
+      return null;
+    default:
+      return "micRecognitionError";
+  }
 }
 
 export function eventMessage(event, lang) {
