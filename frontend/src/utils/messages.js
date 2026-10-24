@@ -36,6 +36,11 @@ export const copy = {
   discovery: { en: "Real website discovery", hi: "असली वेबसाइट खोज" },
   demo: { en: "Demo form", hi: "डेमो फ़ॉर्म" },
   livePreview: { en: "Live browser", hi: "लाइव ब्राउज़र" },
+  liveBrowserAction: { en: "TinyFish is doing", hi: "TinyFish अभी कर रहा है" },
+  livePreviewStarting: {
+    en: "Waiting for TinyFish to provide the live browser view…",
+    hi: "TinyFish के लाइव ब्राउज़र दृश्य की प्रतीक्षा है…",
+  },
   previewUnavailable: {
     en: "No live browser preview is available yet. This is not a simulated page.",
     hi: "लाइव ब्राउज़र पूर्वावलोकन अभी उपलब्ध नहीं है। यह कोई नकली पेज नहीं दिखाया जा रहा।",
@@ -72,6 +77,10 @@ export const copy = {
     en: "The backend proposed the demo form, not a real government website. Choose Demo Form to continue, or cancel. The flow was not switched for you.",
     hi: "सर्वर ने असली सरकारी वेबसाइट नहीं, डेमो फ़ॉर्म प्रस्तावित किया है। जारी रखने के लिए डेमो फ़ॉर्म चुनें, या रद्द करें। प्रवाह आपके बिना नहीं बदला गया।",
   },
+  flowMismatchDiscovery: {
+    en: "The backend proposed read-only discovery on a real website, not the demo form. Choose Real Website to continue, or cancel. The flow was not switched for you.",
+    hi: "सर्वर ने डेमो फ़ॉर्म नहीं, असली वेबसाइट पर केवल पढ़कर खोज प्रस्तावित की है। जारी रखने के लिए असली वेबसाइट चुनें, या रद्द करें। प्रवाह आपके बिना नहीं बदला गया।",
+  },
   fieldMismatch: {
     en: "The value read from the form differs from the approved value. Edit and refill before submitting.",
     hi: "फ़ॉर्म से पढ़ी गई जानकारी अनुमोदित जानकारी से अलग है। जमा करने से पहले बदलें और फ़ॉर्म फिर से भरें।",
@@ -89,6 +98,47 @@ export const copy = {
   outcomeUnknown: {
     en: "Completion could not be confirmed. Please check the website yourself.",
     hi: "कार्य पूरा हुआ, यह पुष्टि नहीं हो सकी। कृपया वेबसाइट स्वयं जाँचें।",
+  },
+  schemeListings: {
+    en: "Possible listings found on myScheme",
+    hi: "myScheme पर मिली संभावित योजनाएँ",
+  },
+  schemePage: { en: "View on myScheme", hi: "myScheme पर देखें" },
+  switchToDemo: {
+    en: "Try the demo form instead",
+    hi: "इसके बजाय डेमो फ़ॉर्म आज़माएँ",
+  },
+  demoFallbackRequest: {
+    en: "Help me fill the demo form",
+    hi: "डेमो फ़ॉर्म भरने में मेरी मदद करें",
+  },
+  discoveryDisclaimer: {
+    en: "These are page listings, not verified eligibility or an application result.",
+    hi: "ये पेज पर मिली योजनाएँ हैं, पात्रता या आवेदन के नतीजे की पुष्टि नहीं।",
+  },
+  schemeHindiUnavailable: {
+    en: "The site returned page text in English only.",
+    hi: "वेबसाइट से केवल अंग्रेज़ी में पेज का पाठ मिला।",
+  },
+  needsHumanCaptcha: {
+    en: "CAPTCHA: Please complete this step yourself.",
+    hi: "CAPTCHA: कृपया यह चरण स्वयं पूरा करें।",
+  },
+  needsHumanOtp: {
+    en: "OTP: Please complete this step yourself.",
+    hi: "OTP: कृपया यह चरण स्वयं पूरा करें।",
+  },
+  needsHumanLogin: {
+    en: "Login: Please complete this step yourself.",
+    hi: "लॉगिन: कृपया यह चरण स्वयं पूरा करें।",
+  },
+  needsHumanBlocked: {
+    en: "The website blocked automation. Please review it yourself.",
+    hi: "वेबसाइट ने स्वचालित कार्रवाई रोक दी। कृपया स्वयं जाँचें।",
+  },
+  stopTooLate: {
+    en: "The submission was verified before the stop request took effect.",
+    hi: "रोकने का अनुरोध लागू होने से पहले जमा होने की पुष्टि हो गई।",
   },
   evidenceExtracted: { en: "Extracted text", hi: "निकाला गया पाठ" },
   evidenceReported: { en: "Agent reported", hi: "एजेंट की रिपोर्ट" },
@@ -116,8 +166,8 @@ export const copy = {
       id: "schemes",
       flow: "discovery",
       text: {
-        en: "Find possible schemes for a 72-year-old woman in Delhi",
-        hi: "दिल्ली में 72 वर्षीय महिला के लिए संभावित योजनाएँ खोजें",
+        en: "Find schemes listed on myScheme (general search)",
+        hi: "myScheme पर सूचीबद्ध योजनाएँ खोजें (सामान्य खोज)",
       },
     },
   ],

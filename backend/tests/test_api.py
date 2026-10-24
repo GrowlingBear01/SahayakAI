@@ -68,7 +68,9 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/health").json(), {"ok": True})
         flows = self.client.get("/flows")
         self.assertEqual(flows.status_code, 200)
-        self.assertEqual(flows.json()[0]["id"], "mock_scheme_application")
+        flow_ids = {flow["id"] for flow in flows.json()}
+        self.assertIn("mock_scheme_application", flow_ids)
+        self.assertIn("myscheme_discovery", flow_ids)
 
 
     def test_task_reaches_done_through_two_approvals(self) -> None:
@@ -110,7 +112,10 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(stale.status_code, 409)
 
         stopped = self.client.post(f"/tasks/{task_id}/stop")
-        self.assertEqual(stopped.json()["state"], "stopped")
+        stopped_result = stopped.json()
+        self.assertEqual(stopped_result["state"], "stopped")
+        self.assertEqual(stopped_result["reason"], None)
+        self.assertIn("Stopped", stopped_result["summary_en"])
 
     def test_answer_endpoint_replans_and_returns_to_approval(self) -> None:
         orchestrator = Orchestrator(

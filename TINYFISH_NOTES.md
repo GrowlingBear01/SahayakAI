@@ -80,3 +80,15 @@ are recorded. The demo values used in the runs were invented.
 - Keep the first successful myScheme run as the only evidence for the guarded
   discovery path.
 - Treat Hindi myScheme as unsupported until a stable run is observed.
+
+## M9 guarded implementation check
+
+- One English, read-only M9 check was attempted with no personal details and no
+  application action.
+- The backend returned `outcome_unknown` with zero safely parsed scheme results;
+  it did not claim success.
+- The wallet endpoint returned HTTP 200. No balance value was recorded.
+- A read-only run-history lookup did not find a matching M9 goal, so a remote
+  TinyFish run start could not be independently confirmed. The exact failure
+  cause was not captured; do not infer that the site itself failed.
+- No second run was performed. M9 remains locally tested but not live-validated.

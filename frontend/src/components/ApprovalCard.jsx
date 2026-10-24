@@ -40,7 +40,14 @@ export default function ApprovalCard({
       <h2>{t(submit ? "submitApprovalTitle" : "startApprovalTitle", language)}</h2>
       <p>{action}</p>
       <p className="muted">{approval.site_kind === "demo" ? t("demoForm", language) : t("realWebsite", language)}</p>
-      {flowMismatch ? <p className="notice">{t("flowMismatch", language)}</p> : null}
+      {flowMismatch ? (
+        <p className="notice">
+          {t(
+            approval.site_kind === "real" ? "flowMismatchDiscovery" : "flowMismatch",
+            language,
+          )}
+        </p>
+      ) : null}
       <p className="notice">{notice}</p>
       {fields.map((field) => (
         <label className="field" key={field.key}>
@@ -78,9 +85,16 @@ export default function ApprovalCard({
             {t("approve", language)}
           </button>
         )}
-        <button type="button" className="ghost" disabled={busy} onClick={() => setEditing(true)}>
-          {t("edit", language)}
-        </button>
+        {fields.length ? (
+          <button
+            type="button"
+            className="ghost"
+            disabled={busy}
+            onClick={() => setEditing(true)}
+          >
+            {t("edit", language)}
+          </button>
+        ) : null}
         <button type="button" className="ghost" disabled={busy} onClick={onCancel}>
           {t("cancelApproval", language)}
         </button>

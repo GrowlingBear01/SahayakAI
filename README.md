@@ -6,12 +6,10 @@ The idea is simple: users should be able to explain what they need in Hindi or E
 
 ## What we're building
 
-The prototype has two planned workflows:
+The prototype has two workflows:
 
-- **myScheme discovery:** Help users find potentially relevant government schemes using information from the official website. This workflow will be read-only and will never submit an application to a real government website.
+- **myScheme discovery:** A guarded, read-only search of public myScheme pages. It does not enter personal details, submit applications, or confirm eligibility. The M0 smoke test had one successful English run; repeat and Hindi runs timed out, so treat this as optional and do not rely on it for the stage demo.
 - **Demo application form:** Use a separate test website with fake information to demonstrate filling out a form and submitting it only after the user gives explicit approval.
-
-The myScheme workflow will be included in the demo only if it proves reliable during testing. Otherwise, we'll focus on the demo form.
 
 ## Current status
 
@@ -34,6 +32,9 @@ available as a separate adapter and must be configured explicitly.
   does not automatically retry a submission without verified status.
 - TinyFish adapter with polling, cancellation handling, screenshots, and live
   browser-view URL support.
+- myScheme discovery with a separate pre-run approval, page-sourced scheme
+  descriptions, optional Hindi translations when returned, same-site-only links,
+  and a demo-form fallback when results cannot be safely extracted.
 
 **Not yet implemented**
 - Production-grade planner and deployments with a configured Gemini API key.
@@ -128,6 +129,24 @@ npm run build
 Copy `.env.example` to `.env` when needed and add your local configuration. Keep API keys in `.env`; never commit secrets to GitHub.
 
 The TinyFish smoke test will also require a valid API key and a public HTTPS URL for the demo website.
+
+### M10 live hardening run
+
+After starting the separate mock-site app and its public HTTPS tunnel, run this
+from the repository root:
+
+```powershell
+python scripts\measure_m10.py
+```
+
+This performs up to 20 sequential TinyFish demo cycles using invented data.
+Each cycle requires separate start and submit approvals in the orchestrator and
+creates a fake demo submission. The script checks the TinyFish wallet (at least
+an estimated USD $10 budget) and the public demo form before it starts. It
+updates `reports\m10_metrics.json` after every cycle with the pass/fail
+denominator and latency; no API keys, references, or form values are recorded.
+Live TinyFish calls incur usage costs. The backup video must be recorded
+separately and is not produced by this script.
 
 ## Team responsibilities
 

@@ -4,7 +4,10 @@ import logging
 import re
 import sqlite3
 from collections.abc import AsyncIterator
+from urllib.parse import urlsplit
 from uuid import uuid4
+
+import httpx
 
 from .agents.base import BrowserAgent, RunResult
 from .agents.factory import create_browser_agent
@@ -21,9 +24,12 @@ from .planner import (
 )
 from .schemas import (
     ApproveRequest,
+    DiscoveryOutput,
+    DiscoveryScheme,
     FieldType,
     FlowConfig,
     FlowField,
+    FlowType,
     Task,
     TaskEvent,
     TaskState,
@@ -69,6 +75,8 @@ class Orchestrator:
         self._lock = asyncio.Lock()
         self._submission_runs: set[str] = set()
         self._planner_runs: dict[str, asyncio.Task[None]] = {}
+        self._active_runs: dict[str, str] = {}
+        self._submission_tokens: dict[str, str] = {}
 
     async def create_task(self, text: str, language: str) -> Task:
         task = Task(
@@ -214,76 +222,44 @@ class Orchestrator:
                 )
             else:
                 flow = self.flows[plan.flow_id]
-                fields = {field.key: field for field in flow.fields}
-                unknown_values = set(plan.values) - fields.keys()
-                unknown_missing = set(plan.missing) - fields.keys()
-                if unknown_values or unknown_missing:
-                    task.state = TaskState.NEEDS_INFO
-                    task.clarifying_question_en = (
-                        "I could not match some details to this form. Please rephrase "
-                        "your request using the form fields."
-                    )
-                    task.clarifying_question_hi = (
-                        "कुछ जानकारी इस फ़ॉर्म से मेल नहीं खा सकी। कृपया फ़ॉर्म के "
-                        "विवरणों के अनुसार अपना अनुरोध फिर से बताएं।"
-                    )
-                    self.store.replace(task)
-                    event_data = self._needs_info_data(task)
-                    event_messages = (
-                        task.clarifying_question_en,
-                        task.clarifying_question_hi,
-                    )
-                else:
+                if flow.flow_type == FlowType.DISCOVERY:
                     task.flow_id = plan.flow_id
                     task.language = (
                         task.language if task.language != "auto" else plan.language
                     )
-                    values = dict(task.values)
-                    invalid_fields: set[str] = set()
-                    for key, value in plan.values.items():
-                        try:
-                            values[key] = self._validate_field_value(fields[key], value)
-                        except ValueError:
-                            values.pop(key, None)
-                            invalid_fields.add(key)
-
-                    missing = [
-                        field.key
-                        for field in flow.fields
-                        if field.key not in values
-                        and (field.required or field.key in plan.missing)
-                    ]
-                    missing.extend(
-                        field.key
-                        for field in flow.fields
-                        if field.key in invalid_fields and field.key not in missing
+                    task.values = {}
+                    task.missing = []
+                    task.schemes = []
+                    task.evidence = None
+                    task.reason = None
+                    task.needs_human_kind = None
+                    task.error = None
+                    task.error_hi = None
+                    task.clarifying_question_en = None
+                    task.clarifying_question_hi = None
+                    task.approval_id = str(uuid4())
+                    task.approval_type = "start"
+                    task.state = TaskState.WAITING_FOR_APPROVAL
+                    self.store.replace(task)
+                    event_data = self._approval_data(task, "start")
+                    event_messages = (
+                        "Review and approve this read-only search of myScheme.",
+                        "myScheme पर केवल पढ़ने वाली खोज जाँचकर अनुमति दें।",
                     )
-                    task.values = values
-                    task.missing = missing
-                    if missing or any(key in invalid_fields for key in fields):
+                else:
+                    fields = {field.key: field for field in flow.fields}
+                    unknown_values = set(plan.values) - fields.keys()
+                    unknown_missing = set(plan.missing) - fields.keys()
+                    if unknown_values or unknown_missing:
                         task.state = TaskState.NEEDS_INFO
-                        if invalid_fields:
-                            labels_en = ", ".join(
-                                fields[key].label_en for key in sorted(invalid_fields)
-                            )
-                            labels_hi = ", ".join(
-                                fields[key].label_hi for key in sorted(invalid_fields)
-                            )
-                            task.clarifying_question_en = (
-                                f"Please provide valid details for: {labels_en}."
-                            )
-                            task.clarifying_question_hi = (
-                                f"कृपया इन विवरणों की सही जानकारी दें: {labels_hi}।"
-                            )
-                        else:
-                            task.clarifying_question_en = (
-                                plan.clarifying_question_en
-                                or self._missing_question(flow, missing, "en")
-                            )
-                            task.clarifying_question_hi = (
-                                plan.clarifying_question_hi
-                                or self._missing_question(flow, missing, "hi")
-                            )
+                        task.clarifying_question_en = (
+                            "I could not match some details to this form. Please rephrase "
+                            "your request using the form fields."
+                        )
+                        task.clarifying_question_hi = (
+                            "कुछ जानकारी इस फ़ॉर्म से मेल नहीं खा सकी। कृपया फ़ॉर्म के "
+                            "विवरणों के अनुसार अपना अनुरोध फिर से बताएं।"
+                        )
                         self.store.replace(task)
                         event_data = self._needs_info_data(task)
                         event_messages = (
@@ -291,18 +267,75 @@ class Orchestrator:
                             task.clarifying_question_hi,
                         )
                     else:
-                        task.missing = []
-                        task.clarifying_question_en = None
-                        task.clarifying_question_hi = None
-                        task.approval_id = str(uuid4())
-                        task.approval_type = "start"
-                        task.state = TaskState.WAITING_FOR_APPROVAL
-                        self.store.replace(task)
-                        event_data = self._approval_data(task, "start")
-                        event_messages = (
-                            "Please review and approve starting the demo form.",
-                            "डेमो फ़ॉर्म शुरू करने की जानकारी जाँचकर अनुमति दें।",
+                        task.flow_id = plan.flow_id
+                        task.language = (
+                            task.language if task.language != "auto" else plan.language
                         )
+                        values = dict(task.values)
+                        invalid_fields: set[str] = set()
+                        for key, value in plan.values.items():
+                            try:
+                                values[key] = self._validate_field_value(fields[key], value)
+                            except ValueError:
+                                values.pop(key, None)
+                                invalid_fields.add(key)
+
+                        missing = [
+                            field.key
+                            for field in flow.fields
+                            if field.key not in values
+                            and (field.required or field.key in plan.missing)
+                        ]
+                        missing.extend(
+                            field.key
+                            for field in flow.fields
+                            if field.key in invalid_fields and field.key not in missing
+                        )
+                        task.values = values
+                        task.missing = missing
+                        if missing or any(key in invalid_fields for key in fields):
+                            task.state = TaskState.NEEDS_INFO
+                            if invalid_fields:
+                                labels_en = ", ".join(
+                                    fields[key].label_en for key in sorted(invalid_fields)
+                                )
+                                labels_hi = ", ".join(
+                                    fields[key].label_hi for key in sorted(invalid_fields)
+                                )
+                                task.clarifying_question_en = (
+                                    f"Please provide valid details for: {labels_en}."
+                                )
+                                task.clarifying_question_hi = (
+                                    f"कृपया इन विवरणों की सही जानकारी दें: {labels_hi}।"
+                                )
+                            else:
+                                task.clarifying_question_en = (
+                                    plan.clarifying_question_en
+                                    or self._missing_question(flow, missing, "en")
+                                )
+                                task.clarifying_question_hi = (
+                                    plan.clarifying_question_hi
+                                    or self._missing_question(flow, missing, "hi")
+                                )
+                            self.store.replace(task)
+                            event_data = self._needs_info_data(task)
+                            event_messages = (
+                                task.clarifying_question_en,
+                                task.clarifying_question_hi,
+                            )
+                        else:
+                            task.missing = []
+                            task.clarifying_question_en = None
+                            task.clarifying_question_hi = None
+                            task.approval_id = str(uuid4())
+                            task.approval_type = "start"
+                            task.state = TaskState.WAITING_FOR_APPROVAL
+                            self.store.replace(task)
+                            event_data = self._approval_data(task, "start")
+                            event_messages = (
+                                "Please review and approve starting the demo form.",
+                                "डेमो फ़ॉर्म शुरू करने की जानकारी जाँचकर अनुमति दें।",
+                            )
 
         await self._emit(
             task,
@@ -399,6 +432,11 @@ class Orchestrator:
                 self.store.replace(task)
                 operation = "fill"
             elif task.approval_type == "submit":
+                if (
+                    task.flow_id is None
+                    or self.flows[task.flow_id].flow_type != FlowType.SUBMISSION
+                ):
+                    raise ValueError("discovery flows cannot be submitted")
                 if not self._reported_fields_match(task):
                     raise ValueError(
                         "reported form values do not match the reviewed values; "
@@ -407,6 +445,7 @@ class Orchestrator:
                 token = self.submission_store.issue_token(
                     task_id, task.values, self.token_ttl_seconds
                 )
+                self._submission_tokens[task_id] = token
                 task.state = TaskState.SUBMITTING
                 task.approval_id = None
                 task.approval_type = None
@@ -431,6 +470,9 @@ class Orchestrator:
         return self._require_task(task_id)
 
     async def stop(self, task_id: str) -> Task:
+        active_run_id: str | None = None
+        submission_token: str | None = None
+        terminal_event: Task | None = None
         async with self._lock:
             task = self._require_task(task_id)
             if task.state in {
@@ -441,35 +483,70 @@ class Orchestrator:
             }:
                 return task
             task.cancelled = True
+            self.store.replace(task)
             if task.state == TaskState.PLANNING:
                 planner_run = self._planner_runs.get(task_id)
                 if planner_run is not None:
                     planner_run.cancel()
-            self.submission_store.revoke_task_tokens(task_id, "user_stopped")
-            verification_pending = (
-                task.state == TaskState.SUBMITTING
-                and task_id in self._submission_runs
-            )
-            if not verification_pending:
+            active_run_id = self._active_runs.get(task_id)
+            if task.state == TaskState.SUBMITTING:
+                submission_token = self._submission_tokens.get(task_id)
+                if submission_token is None:
+                    task.state = TaskState.OUTCOME_UNKNOWN
+                    task.reason = "db_unavailable"
+                    task.error = (
+                        "The submission attempt could not be identified. "
+                        "Check the demo site manually; do not retry."
+                    )
+                    task.error_hi = (
+                        "जमा करने की कोशिश की पहचान नहीं हो सकी। डेमो साइट स्वयं जाँचें; "
+                        "दोबारा कोशिश न करें।"
+                    )
+                    self.store.replace(task)
+                    terminal_event = task
+            else:
                 task.state = TaskState.STOPPED
-            self.store.replace(task)
-        if verification_pending:
-            await self._emit(
-                task,
-                "Stop requested during submission. Checking whether it was received.",
-                "जमा करते समय रोकने का अनुरोध मिला। पुष्टि की जाँच हो रही है।",
-                4,
-                4,
+                task.approval_id = None
+                task.approval_type = None
+                self.store.replace(task)
+                terminal_event = task
+
+        if submission_token is not None:
+            await self._resolve_submission(
+                task_id,
+                submission_token,
+                result=None,
+                trigger="user_stopped",
             )
-        else:
+            if active_run_id is not None:
+                await self._cancel_agent_run(task_id, active_run_id)
+        elif terminal_event is not None:
+            cancellation_confirmed = True
+            if active_run_id is not None:
+                cancellation_confirmed = await self._cancel_agent_run(
+                    task_id, active_run_id
+                )
+            if not cancellation_confirmed and terminal_event.state == TaskState.STOPPED:
+                terminal_event.error = (
+                    "Stop was requested, but the cloud browser did not confirm "
+                    "cancellation. Actions already taken may remain."
+                )
+                terminal_event.error_hi = (
+                    "रोकने का अनुरोध किया गया, लेकिन क्लाउड ब्राउज़र ने रुकने की "
+                    "पुष्टि नहीं की। पहले किए गए काम का असर रह सकता है।"
+                )
+                self.store.replace(terminal_event)
             await self._emit(
-                task,
-                "Stopped. Actions already taken may remain.",
-                "रोक दिया गया। पहले किए गए काम का असर रह सकता है।",
+                terminal_event,
+                terminal_event.error
+                or "Stopped. Actions already taken may remain.",
+                terminal_event.error_hi
+                or "रोक दिया गया। क्लाउड ब्राउज़र में पहले किए गए काम का असर रह सकता है।",
                 4,
                 4,
+                self._result_data(terminal_event, terminal_event.reason),
             )
-        return task
+        return self._require_task(task_id)
 
     async def events(self, task_id: str) -> AsyncIterator[TaskEvent]:
         task = self._require_task(task_id)
@@ -498,6 +575,9 @@ class Orchestrator:
     async def _fill(self, task_id: str) -> None:
         task = self._require_task(task_id)
         flow = self.flows[task.flow_id]
+        if flow.flow_type == FlowType.DISCOVERY:
+            await self._discover(task_id)
+            return
         await self._emit(
             task,
             "Filling the demo form.",
@@ -511,12 +591,77 @@ class Orchestrator:
             goal = self._with_mock_context(
                 goal, "fill", task.task_id, task.values
             )
-        result = await self.agent.run(flow.url, goal)
+        result: RunResult | None = None
+        for attempt in range(3):
+            if self._require_task(task_id).cancelled:
+                return
+            try:
+                result = await self._run_agent(task_id, flow.url, goal)
+            except (httpx.TransportError, TimeoutError, ConnectionError, OSError) as error:
+                logger.warning(
+                    "Transient browser error for task %s (attempt %s): %s",
+                    task_id,
+                    attempt + 1,
+                    type(error).__name__,
+                )
+                result = RunResult(
+                    False,
+                    "",
+                    error=f"Browser service connection failed: {type(error).__name__}",
+                )
+            except Exception as error:
+                logger.exception(
+                    "Unexpected browser failure for task %s (%s)",
+                    task_id,
+                    type(error).__name__,
+                )
+                result = RunResult(
+                    False,
+                    "",
+                    error="The browser service encountered an unexpected error.",
+                )
+
+            if self._require_task(task_id).cancelled:
+                return
+            if result.needs_human:
+                human_kind = (
+                    result.needs_human
+                    if result.needs_human in {"captcha", "otp", "login", "blocked"}
+                    else None
+                )
+                await self._fail(
+                    self._require_task(task_id),
+                    "A person must complete the requested website step. Nothing was submitted.",
+                    reason="needs_human",
+                    needs_human_kind=human_kind,
+                    result=result,
+                )
+                return
+            if result.ok and result.reported_fields is not None:
+                break
+            if attempt < 2 and self._is_retryable_error(result.error):
+                await self._emit(
+                    self._require_task(task_id),
+                    f"Temporary browser error. Retrying ({attempt + 1}/2).",
+                    f"ब्राउज़र में अस्थायी समस्या। फिर कोशिश कर रहा हूँ ({attempt + 1}/2)।",
+                    3,
+                    4,
+                    {"action": "Retrying browser run", "streaming_url": None},
+                )
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+            break
+
         task = self._require_task(task_id)
         if task.cancelled:
             return
-        if not result.ok or result.reported_fields is None:
-            await self._fail(task, result.error or "mock agent failed")
+        if result is None or not result.ok or result.reported_fields is None:
+            await self._fail(
+                task,
+                (result.error if result else None)
+                or "The browser could not fill the form.",
+                result=result,
+            )
             return
         task.reported_fields = result.reported_fields
         task.approval_id = str(uuid4())
@@ -537,10 +682,179 @@ class Orchestrator:
             approval_data,
         )
 
+    async def _discover(self, task_id: str) -> None:
+        task = self._require_task(task_id)
+        flow = self.flows[task.flow_id]
+        await self._emit(
+            task,
+            "Searching public myScheme pages (read-only).",
+            "myScheme के सार्वजनिक पेजों पर केवल पढ़कर खोज रहा हूँ।",
+            3,
+            4,
+            {"action": "Read-only search", "streaming_url": None},
+        )
+        result: RunResult | None = None
+        output: DiscoveryOutput | None = None
+        for attempt in range(3):
+            if self._require_task(task_id).cancelled:
+                return
+            try:
+                result = await self._run_agent(task_id, flow.url, flow.goal_template)
+            except (httpx.TransportError, TimeoutError, ConnectionError, OSError) as error:
+                logger.warning(
+                    "Transient discovery error for task %s (attempt %s): %s",
+                    task_id,
+                    attempt + 1,
+                    type(error).__name__,
+                )
+                result = RunResult(
+                    False,
+                    "",
+                    error=f"Browser service connection failed: {type(error).__name__}",
+                )
+            except Exception as error:
+                logger.exception(
+                    "Unexpected discovery failure for task %s (%s)",
+                    task_id,
+                    type(error).__name__,
+                )
+                result = RunResult(
+                    False,
+                    "",
+                    error="The browser service encountered an unexpected error.",
+                )
+
+            if self._require_task(task_id).cancelled:
+                return
+            human_kind = self._discovery_human_kind(flow, result)
+            if human_kind is not None:
+                await self._fail(
+                    self._require_task(task_id),
+                    "A person must complete the requested website step. No application was submitted.",
+                    reason="needs_human",
+                    needs_human_kind=human_kind,
+                    result=result,
+                )
+                return
+            if result.ok and result.final_text:
+                output = self._parse_discovery_output(result.final_text)
+                break
+            if attempt < 2 and self._is_retryable_error(result.error):
+                await self._emit(
+                    self._require_task(task_id),
+                    f"Temporary browser error. Retrying ({attempt + 1}/2).",
+                    f"ब्राउज़र में अस्थायी समस्या। फिर कोशिश कर रहा हूँ ({attempt + 1}/2)।",
+                    3,
+                    4,
+                    {"action": "Retrying read-only search", "streaming_url": None},
+                )
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+            break
+
+        task = self._require_task(task_id)
+        if task.cancelled:
+            return
+        if (
+            result is not None
+            and result.ok
+            and output is not None
+            and not output.problems
+            and output.schemes
+        ):
+            schemes: list[DiscoveryScheme] = []
+            for scheme in output.schemes:
+                name = scheme.name.strip()
+                description = scheme.description.strip()
+                description_hi = (
+                    scheme.description_hi.strip()
+                    if scheme.description_hi is not None
+                    else None
+                )
+                if not name or not description:
+                    schemes = []
+                    break
+                schemes.append(
+                    scheme.model_copy(
+                        update={
+                            "name": name,
+                            "description": description,
+                            "description_hi": description_hi,
+                            "scheme_page_url": self._safe_scheme_url(
+                                flow, scheme.scheme_page_url
+                            ),
+                        }
+                    )
+                )
+            if schemes:
+                task.schemes = schemes
+                task.evidence = {
+                    "kind": "extracted_text",
+                    "text": "\n\n".join(
+                        f"{scheme.name}\n{scheme.description}" for scheme in schemes
+                    ),
+                    "screenshot_url": result.screenshot_url,
+                }
+                task.state = TaskState.DONE
+                self.store.replace(task)
+                count = len(schemes)
+                await self._emit(
+                    task,
+                    f"Found {count} possible scheme listings on myScheme. Eligibility is not confirmed.",
+                    f"myScheme पर {count} संभावित योजनाएँ मिलीं। पात्रता की पुष्टि नहीं हुई है।",
+                    4,
+                    4,
+                    {
+                        **self._result_data(task, None),
+                        "streaming_url": result.streaming_url,
+                    },
+                )
+                return
+
+        await self._discovery_unavailable(task, result)
+
+    async def _discovery_unavailable(
+        self, task: Task, result: RunResult | None
+    ) -> None:
+        task.state = TaskState.OUTCOME_UNKNOWN
+        task.reason = "discovery_unavailable"
+        task.schemes = []
+        task.error = (
+            "myScheme did not return results that could be safely extracted. "
+            "No eligibility or application status was verified."
+        )
+        task.error_hi = (
+            "myScheme से ऐसे परिणाम नहीं मिले जिन्हें सुरक्षित रूप से निकाला जा सके। "
+            "पात्रता या आवेदन की स्थिति की पुष्टि नहीं हुई।"
+        )
+        task.evidence = (
+            {
+                "kind": "agent_reported",
+                "text": result.final_text[:5000] if result and result.final_text else None,
+                "screenshot_url": result.screenshot_url if result else None,
+            }
+            if result is not None and (result.final_text or result.screenshot_url)
+            else None
+        )
+        self.store.replace(task)
+        await self._emit(
+            task,
+            task.error,
+            task.error_hi,
+            4,
+            4,
+            {
+                **self._result_data(task, task.reason),
+                "streaming_url": result.streaming_url if result else None,
+            },
+        )
+
     async def _submit(self, task_id: str, token: str) -> None:
         task = self._require_task(task_id)
         if task.cancelled:
             return
+        if self.flows[task.flow_id].flow_type != FlowType.SUBMISSION:
+            raise ValueError("discovery flows cannot be submitted")
         await self._emit(
             task,
             "Submitting the approved demo form.",
@@ -563,96 +877,387 @@ class Orchestrator:
         self._submission_runs.add(task_id)
         try:
             try:
-                result = await self.agent.run(flow.url, goal)
+                result = await self._run_agent(task_id, flow.url, goal)
             except Exception as error:
-                logger.exception(
-                    "Submission agent failed for task %s; checking authoritative status",
+                logger.error(
+                    "Submission agent failed for task %s (%s); checking authoritative status",
                     task_id,
+                    type(error).__name__,
                 )
                 result = RunResult(
                     False,
                     "submission-agent-error",
-                    error=f"submission agent failed: {error}",
+                    error="The submission browser run failed.",
                 )
         finally:
             self._submission_runs.discard(task_id)
-        task = self._require_task(task_id)
-        try:
-            verified = self.submission_store.verify_submission(
-                task_id, token, task.values
-            )
-        except sqlite3.Error:
-            logger.exception("Unable to verify demo submission for task %s", task_id)
-            verified = None
+        await self._resolve_submission(
+            task_id, token, result=result, trigger="run_finished"
+        )
 
-        if verified is not None:
-            task.state = TaskState.DONE
-            task.evidence = {
-                "kind": "verified_confirmation",
-                "text": (
-                    "Application received. Reference number: "
-                    f"{verified.reference_number}"
-                ),
-                "screenshot_url": result.screenshot_url,
-            }
-            self.store.replace(task)
-            await self._emit(
-                task,
-                "The demo submission was completed.",
-                "डेमो आवेदन जमा हो गया।",
-                4,
-                4,
-                {
-                    **self._result_data(
-                        task,
-                        None,
-                        (
-                            "The submission was verified after a stop request."
-                            if task.cancelled
-                            else None
-                        ),
-                    ),
-                    "streaming_url": result.streaming_url,
-                },
-            )
-        else:
-            self.submission_store.revoke_task_tokens(task_id, "verification_failed")
-            task.state = TaskState.OUTCOME_UNKNOWN
-            task.error = (
-                "The demo site did not provide a server-verified submission record. "
-                "Do not retry automatically; check the demo site before taking action."
-            )
+    async def _fail(
+        self,
+        task: Task,
+        error: str,
+        reason: str = "agent_error",
+        needs_human_kind: str | None = None,
+        result: RunResult | None = None,
+    ) -> None:
+        task.state = TaskState.COULD_NOT_FINISH
+        task.error = error
+        task.error_hi = self._human_action_message_hi(needs_human_kind) if needs_human_kind else (
+            "डेमो कार्य पूरा नहीं हो सका। कृपया विवरण जाँचकर फिर कोशिश करें।"
+        )
+        task.reason = reason
+        task.needs_human_kind = needs_human_kind
+        if result is not None:
             task.evidence = {
                 "kind": "agent_reported",
                 "text": result.final_text,
                 "screenshot_url": result.screenshot_url,
             }
-            self.store.replace(task)
-            await self._emit(
-                task,
-                "I could not verify whether the demo submission was received. "
-                "Do not retry; check the demo site first.",
-                "डेमो जमा होने की पुष्टि नहीं हो सकी। दोबारा न भेजें; पहले डेमो साइट जाँचें।",
-                4,
-                4,
-                {
-                    **self._result_data(task, "verification_failed"),
-                    "streaming_url": result.streaming_url,
-                },
-            )
-
-    async def _fail(self, task: Task, error: str) -> None:
-        task.state = TaskState.COULD_NOT_FINISH
-        task.error = error
         self.store.replace(task)
         await self._emit(
             task,
-            "I could not complete the demo task.",
-            "डेमो कार्य पूरा नहीं हो सका।",
+            error,
+            task.error_hi,
             4,
             4,
-            self._result_data(task, "agent_error"),
+            self._result_data(task, reason),
         )
+
+    async def _run_agent(self, task_id: str, url: str, goal: str) -> RunResult:
+        run_with_callback = getattr(self.agent, "run_with_callback", None)
+        try:
+            if callable(run_with_callback):
+                return await run_with_callback(
+                    url,
+                    goal,
+                    lambda run_id: self._register_active_run(task_id, run_id),
+                    lambda streaming_url, action: self._publish_agent_progress(
+                        task_id, streaming_url, action
+                    ),
+                )
+            return await self.agent.run(url, goal)
+        finally:
+            self._active_runs.pop(task_id, None)
+
+    async def _publish_agent_progress(
+        self,
+        task_id: str,
+        streaming_url: str | None,
+        action: str | None,
+    ) -> None:
+        task = self._require_task(task_id)
+        if task.cancelled or task.state not in {TaskState.WORKING, TaskState.SUBMITTING}:
+            return
+        flow = self.flows.get(task.flow_id) if task.flow_id else None
+        is_discovery = flow is not None and flow.flow_type == FlowType.DISCOVERY
+        message_en = (
+            "TinyFish is browsing myScheme (read-only)."
+            if is_discovery
+            else "TinyFish is working in the demo browser."
+        )
+        message_hi = (
+            "TinyFish myScheme पर केवल पढ़कर खोज रहा है।"
+            if is_discovery
+            else "TinyFish डेमो ब्राउज़र में काम कर रहा है।"
+        )
+        await self._emit(
+            task,
+            message_en,
+            message_hi,
+            3 if task.state == TaskState.WORKING else 4,
+            4,
+            {
+                "action": action,
+                "streaming_url": streaming_url,
+            },
+        )
+
+    def _register_active_run(self, task_id: str, run_id: str) -> None:
+        self._active_runs[task_id] = run_id
+        if self._require_task(task_id).cancelled:
+            asyncio.create_task(self._cancel_agent_run(task_id, run_id))
+
+    async def _cancel_agent_run(self, task_id: str, run_id: str) -> bool:
+        try:
+            result = await self.agent.cancel(run_id)
+        except Exception as error:
+            logger.warning(
+                "Unable to cancel browser run for task %s (%s)",
+                task_id,
+                type(error).__name__,
+            )
+            return False
+        if result.status not in {"CANCELLED", "COMPLETED"}:
+            logger.warning(
+                "Browser cancellation not confirmed for task %s: %s",
+                task_id,
+                result.status,
+            )
+            return False
+        return True
+
+    @staticmethod
+    def _is_retryable_error(error: str | None) -> bool:
+        if not error:
+            return False
+        text = error.lower()
+        return any(
+            marker in text
+            for marker in (
+                "timeout",
+                "timed out",
+                "connection",
+                "network",
+                "temporar",
+                "page load",
+                "429",
+                "500",
+                "502",
+                "503",
+                "504",
+                "service unavailable",
+                "gateway",
+            )
+        )
+
+    @staticmethod
+    def _agent_claimed_success(result: RunResult) -> bool:
+        if not result.final_text:
+            return False
+        try:
+            report = json.loads(result.final_text)
+        except json.JSONDecodeError:
+            report = None
+        if isinstance(report, dict) and report.get("submitted") is True:
+            return True
+        text = result.final_text.lower()
+        return "application received" in text or "reference number" in text
+
+    @staticmethod
+    def _human_action_message_hi(kind: str) -> str:
+        messages = {
+            "captcha": "वेबसाइट पर CAPTCHA है। कृपया इसे स्वयं पूरा करें। कुछ जमा नहीं हुआ।",
+            "otp": "वेबसाइट पर OTP चाहिए। कृपया इसे स्वयं पूरा करें। कुछ जमा नहीं हुआ।",
+            "login": "वेबसाइट पर लॉगिन चाहिए। कृपया इसे स्वयं पूरा करें। कुछ जमा नहीं हुआ।",
+            "blocked": "वेबसाइट ने स्वचालित पहुँच रोक दी। कृपया इसे स्वयं देखें। कुछ जमा नहीं हुआ।",
+        }
+        return messages.get(
+            kind,
+            "वेबसाइट पर एक कदम के लिए आपकी मदद चाहिए। कुछ जमा नहीं हुआ।",
+        )
+
+    @staticmethod
+    def _discovery_human_kind(
+        flow: FlowConfig, result: RunResult
+    ) -> str | None:
+        if result.needs_human in flow.needs_human:
+            return result.needs_human
+        output = (
+            Orchestrator._parse_discovery_output(result.final_text)
+            if result.final_text
+            else None
+        )
+        if output is None:
+            return None
+        for kind in flow.needs_human:
+            if any(
+                re.search(rf"\b{re.escape(kind)}\b", problem, re.IGNORECASE)
+                for problem in output.problems
+            ):
+                return kind
+        return None
+
+    @staticmethod
+    def _parse_discovery_output(text: str) -> DiscoveryOutput | None:
+        candidate = text.strip()
+        if candidate.startswith("```"):
+            candidate = re.sub(r"^```(?:json)?\s*|\s*```$", "", candidate, flags=re.IGNORECASE)
+        try:
+            payload = json.loads(candidate)
+            if isinstance(payload, dict) and "schemes" not in payload:
+                nested = payload.get("result")
+                if isinstance(nested, str):
+                    payload = json.loads(nested)
+                elif isinstance(nested, dict):
+                    payload = nested
+            return DiscoveryOutput.model_validate(payload)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _safe_scheme_url(flow: FlowConfig, candidate: str | None) -> str | None:
+        if not candidate:
+            return None
+        try:
+            parsed = urlsplit(candidate)
+            flow_host = urlsplit(flow.url).hostname
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname != flow_host
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.port not in (None, 443)
+            ):
+                return None
+        except ValueError:
+            return None
+        return candidate
+
+    async def _resolve_submission(
+        self,
+        task_id: str,
+        token: str,
+        result: RunResult | None,
+        trigger: str,
+    ) -> Task:
+        async with self._lock:
+            task = self._require_task(task_id)
+            if task.state != TaskState.SUBMITTING:
+                return task
+            try:
+                self.submission_store.revoke_token(token, trigger)
+                verified = self.submission_store.verify_submission(
+                    task_id, token, task.values
+                )
+            except sqlite3.Error:
+                logger.exception(
+                    "Unable to revoke or verify submission for task %s", task_id
+                )
+                task.state = TaskState.OUTCOME_UNKNOWN
+                task.reason = "db_unavailable"
+                task.error = (
+                    "I cannot confirm whether the demo form was submitted. "
+                    "Check the demo site manually; I will not retry."
+                )
+                task.error_hi = (
+                    "डेमो फ़ॉर्म जमा हुआ या नहीं, इसकी पुष्टि नहीं हो सकी। "
+                    "डेमो साइट स्वयं जाँचें; मैं दोबारा कोशिश नहीं करूँगा।"
+                )
+                task.evidence = {
+                    "kind": "agent_reported",
+                    "text": result.final_text if result else None,
+                    "screenshot_url": result.screenshot_url if result else None,
+                }
+            else:
+                if verified is not None:
+                    task.state = TaskState.DONE
+                    task.reason = None
+                    task.error = None
+                    task.error_hi = None
+                    task.needs_human_kind = None
+                    task.evidence = {
+                        "kind": "verified_confirmation",
+                        "text": (
+                            "Application received. Reference number: "
+                            f"{verified.reference_number}"
+                        ),
+                        "screenshot_url": result.screenshot_url if result else None,
+                    }
+                elif task.cancelled:
+                    task.state = TaskState.STOPPED
+                    task.reason = None
+                    task.error = "Stopped. Nothing was submitted."
+                    task.error_hi = "रोक दिया गया। कुछ भी जमा नहीं हुआ।"
+                    task.evidence = None
+                elif result is not None and result.needs_human:
+                    task.state = TaskState.COULD_NOT_FINISH
+                    task.reason = "needs_human"
+                    task.needs_human_kind = (
+                        result.needs_human
+                        if result.needs_human
+                        in {"captcha", "otp", "login", "blocked"}
+                        else None
+                    )
+                    task.error = (
+                        "A person must complete the requested website step. "
+                        "Nothing was submitted."
+                    )
+                    task.error_hi = self._human_action_message_hi(
+                        result.needs_human
+                    )
+                    task.evidence = {
+                        "kind": "agent_reported",
+                        "text": result.final_text,
+                        "screenshot_url": result.screenshot_url,
+                    }
+                elif result is not None and self._agent_claimed_success(result):
+                    task.state = TaskState.COULD_NOT_FINISH
+                    task.reason = "unverified_claim"
+                    task.error = (
+                        "The browser reported success, but no server record exists. "
+                        "Nothing was verified as submitted."
+                    )
+                    task.error_hi = (
+                        "ब्राउज़र ने सफलता बताई, लेकिन सर्वर रिकॉर्ड नहीं मिला। "
+                        "जमा होने की पुष्टि नहीं हुई।"
+                    )
+                    task.evidence = {
+                        "kind": "agent_reported",
+                        "text": result.final_text,
+                        "screenshot_url": result.screenshot_url,
+                    }
+                else:
+                    task.state = TaskState.COULD_NOT_FINISH
+                    task.reason = "not_submitted"
+                    task.error = (
+                        "Not submitted. You may review the details and approve "
+                        "another attempt."
+                    )
+                    task.error_hi = (
+                        "जमा नहीं हुआ। आप विवरण जाँचकर एक और कोशिश की अनुमति दे सकते हैं।"
+                    )
+                    task.evidence = (
+                        {
+                            "kind": "agent_reported",
+                            "text": result.final_text,
+                            "screenshot_url": result.screenshot_url,
+                        }
+                        if result and result.final_text
+                        else None
+                    )
+
+            note = (
+                "stop_too_late"
+                if task.state == TaskState.DONE and task.cancelled
+                else None
+            )
+            self._submission_tokens.pop(task_id, None)
+            self.store.replace(task)
+
+        messages = {
+            TaskState.DONE: (
+                "The demo submission was completed and verified.",
+                "डेमो आवेदन जमा होने की पुष्टि हो गई।",
+            ),
+            TaskState.STOPPED: (
+                task.error or "Stopped. Nothing was submitted.",
+                task.error_hi or "रोक दिया गया। कुछ भी जमा नहीं हुआ।",
+            ),
+            TaskState.OUTCOME_UNKNOWN: (
+                task.error or "The submission outcome is unknown.",
+                task.error_hi or "जमा होने की स्थिति की पुष्टि नहीं हो सकी।",
+            ),
+            TaskState.COULD_NOT_FINISH: (
+                task.error or "I could not complete the submission.",
+                task.error_hi or "जमा करने का काम पूरा नहीं हो सका।",
+            ),
+        }
+        message_en, message_hi = messages[task.state]
+        await self._emit(
+            task,
+            message_en,
+            message_hi,
+            4,
+            4,
+            {
+                **self._result_data(task, task.reason, note),
+                "streaming_url": result.streaming_url if result else None,
+            },
+        )
+        return task
 
     async def _emit(
         self,
@@ -678,6 +1283,7 @@ class Orchestrator:
 
     def _approval_data(self, task: Task, approval_type: str) -> dict:
         flow = self.flows[task.flow_id]
+        is_discovery = flow.flow_type == FlowType.DISCOVERY
         fields = [
             {
                 "label_en": field.label_en,
@@ -700,33 +1306,89 @@ class Orchestrator:
         return {
             "approval_id": task.approval_id,
             "approval_type": approval_type,
-            "site_kind": "demo",
+            "site_kind": "real" if is_discovery else "demo",
             "flow_id": task.flow_id,
-            "action_en": "Fill the demo form" if approval_type == "start" else "Submit the demo form",
-            "action_hi": "डेमो फ़ॉर्म भरें" if approval_type == "start" else "डेमो फ़ॉर्म जमा करें",
-            "data_notice_en": "These details will be sent to a cloud browser and entered on the demo form.",
-            "data_notice_hi": "यह जानकारी क्लाउड ब्राउज़र को भेजकर डेमो फ़ॉर्म में भरी जाएगी।",
+            "action_en": (
+                "Search public myScheme pages (read-only; no application will be submitted)."
+                if is_discovery
+                else "Fill the demo form"
+                if approval_type == "start"
+                else "Submit the demo form"
+            ),
+            "action_hi": (
+                "myScheme के सार्वजनिक पेजों पर खोजें (केवल पढ़ें; कोई आवेदन जमा नहीं होगा)।"
+                if is_discovery
+                else "डेमो फ़ॉर्म भरें"
+                if approval_type == "start"
+                else "डेमो फ़ॉर्म जमा करें"
+            ),
+            "data_notice_en": (
+                "A cloud browser will read public pages on myScheme. No personal details "
+                "will be entered, and no application will be submitted."
+                if is_discovery
+                else "These details will be sent to a cloud browser and entered on the demo form."
+            ),
+            "data_notice_hi": (
+                "क्लाउड ब्राउज़र myScheme के सार्वजनिक पेज पढ़ेगा। कोई निजी जानकारी "
+                "नहीं भरी जाएगी और कोई आवेदन जमा नहीं होगा।"
+                if is_discovery
+                else "यह जानकारी क्लाउड ब्राउज़र को भेजकर डेमो फ़ॉर्म में भरी जाएगी।"
+            ),
             "fields": fields,
-            "read_back_en": "Please check these details.",
-            "read_back_hi": "कृपया यह जानकारी जाँचें।",
+            "read_back_en": (
+                "Please approve this read-only search."
+                if is_discovery
+                else "Please check these details."
+            ),
+            "read_back_hi": (
+                "केवल पढ़कर खोज करने की अनुमति दें।"
+                if is_discovery
+                else "कृपया यह जानकारी जाँचें।"
+            ),
         }
 
     def _result_data(
         self, task: Task, reason: str | None, note: str | None = None
     ) -> dict:
+        is_discovery = (
+            task.flow_id in self.flows
+            and self.flows[task.flow_id].flow_type == FlowType.DISCOVERY
+        )
+        if is_discovery and task.state == TaskState.DONE:
+            summary_en = (
+                f"Found {len(task.schemes)} possible scheme listings on myScheme. "
+                "Eligibility is not confirmed."
+            )
+            summary_hi = (
+                f"myScheme पर {len(task.schemes)} संभावित योजनाएँ मिलीं। "
+                "पात्रता की पुष्टि नहीं हुई है।"
+            )
+        else:
+            summary_en = task.error or "Task completed."
+            summary_hi = (
+                task.error_hi
+                or (
+                    "डेमो जमा हुआ या नहीं, इसकी सर्वर से पुष्टि नहीं हो सकी। "
+                    "दोबारा न भेजें; पहले डेमो साइट जाँचें।"
+                    if task.state == TaskState.OUTCOME_UNKNOWN and not is_discovery
+                    else task.error or "कार्य पूरा हुआ।"
+                )
+            )
         return {
             "evidence": task.evidence
             or {"kind": "agent_reported", "text": None, "screenshot_url": None},
-            "summary_en": task.error or "Task completed.",
-            "summary_hi": (
-                "डेमो जमा हुआ या नहीं, इसकी सर्वर से पुष्टि नहीं हो सकी। "
-                "दोबारा न भेजें; पहले डेमो साइट जाँचें।"
-                if task.state == TaskState.OUTCOME_UNKNOWN
-                else task.error_hi or task.error or "कार्य पूरा हुआ।"
-            ),
+            "summary_en": summary_en,
+            "summary_hi": summary_hi,
             "reason": reason,
-            "needs_human_kind": None,
+            "needs_human_kind": task.needs_human_kind,
             "note": note,
+            "flow_id": task.flow_id,
+            "schemes": [scheme.model_dump() for scheme in task.schemes],
+            "offer_demo": (
+                is_discovery
+                and task.state
+                in {TaskState.COULD_NOT_FINISH, TaskState.OUTCOME_UNKNOWN}
+            ),
         }
 
     def _snapshot_event(self, task: Task) -> TaskEvent:
@@ -744,9 +1406,9 @@ class Orchestrator:
             TaskState.STOPPED,
             TaskState.OUTCOME_UNKNOWN,
         }:
-            data = self._result_data(task, task.error)
-            message_en = "Task finished."
-            message_hi = "कार्य समाप्त हुआ।"
+            data = self._result_data(task, task.reason)
+            message_en = data["summary_en"]
+            message_hi = data["summary_hi"]
         else:
             data = {}
             message_en = "Task is in progress."
@@ -756,7 +1418,17 @@ class Orchestrator:
             state=task.state,
             message_en=message_en,
             message_hi=message_hi,
-            step=4 if task.state in {TaskState.DONE, TaskState.STOPPED} else 2,
+            step=(
+                4
+                if task.state
+                in {
+                    TaskState.DONE,
+                    TaskState.COULD_NOT_FINISH,
+                    TaskState.STOPPED,
+                    TaskState.OUTCOME_UNKNOWN,
+                }
+                else 2
+            ),
             total_steps=4,
             data=data,
         )

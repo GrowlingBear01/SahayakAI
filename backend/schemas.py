@@ -66,6 +66,22 @@ class FlowConfig(BaseModel):
         return value
 
 
+class DiscoveryScheme(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=2000)
+    description_hi: str | None = Field(default=None, max_length=2000)
+    scheme_page_url: str | None = Field(default=None, max_length=2000)
+
+
+class DiscoveryOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    schemes: list[DiscoveryScheme] = Field(max_length=10)
+    problems: list[str] = Field(max_length=20)
+
+
 class TaskState(StrEnum):
     PLANNING = "planning"
     NEEDS_INFO = "needs_info"
@@ -93,6 +109,9 @@ class Task(BaseModel):
     language: Literal["hi", "en", "auto"] = "auto"
     reported_fields: dict[str, str] | None = None
     evidence: dict[str, Any] | None = None
+    schemes: list[DiscoveryScheme] = Field(default_factory=list)
+    reason: str | None = None
+    needs_human_kind: Literal["captcha", "otp", "login", "blocked"] | None = None
     error: str | None = None
     error_hi: str | None = None
     clarifying_question_en: str | None = None

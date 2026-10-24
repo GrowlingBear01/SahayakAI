@@ -34,6 +34,9 @@ function resultFromEvent(event) {
     needs_human_kind: data.needs_human_kind || null,
     note: data.note || null,
     links: data.links || data.official_links || [],
+    flow_id: data.flow_id || null,
+    schemes: Array.isArray(data.schemes) ? data.schemes : [],
+    offer_demo: data.offer_demo === true,
   };
 }
 
@@ -50,6 +53,7 @@ export function useAssistant() {
   const [progress, setProgress] = useState([]);
   const [approval, setApproval] = useState(null);
   const [streamingUrl, setStreamingUrl] = useState(null);
+  const [liveBrowserAction, setLiveBrowserAction] = useState(null);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -90,15 +94,17 @@ export function useAssistant() {
 
     const url = extractStreamingUrl(event.data);
     if (url) setStreamingUrl(url);
+    if (typeof event.data?.action === "string" && event.data.action.trim()) {
+      setLiveBrowserAction(event.data.action.trim());
+    }
 
     setProgress((current) => [...current, event].slice(-12));
 
     if (event.state === "waiting_for_approval") {
       const nextApproval = approvalFromEvent(event);
       setApproval(nextApproval);
-      if (nextApproval?.site_kind === "demo" && flowRef.current === "discovery") {
-        setFlowMismatch(true);
-      }
+      const selectedSite = flowRef.current === "discovery" ? "real" : "demo";
+      setFlowMismatch(Boolean(nextApproval?.site_kind && nextApproval.site_kind !== selectedSite));
       const fields = fieldsWithKeys(nextApproval, {});
       const readback =
         resolvedLang(lang) === "hi"
@@ -168,6 +174,15 @@ export function useAssistant() {
     refreshHealth();
   }, [refreshHealth]);
 
+  useEffect(() => {
+    if (!approval?.site_kind) {
+      setFlowMismatch(false);
+      return;
+    }
+    const selectedSite = flow === "discovery" ? "real" : "demo";
+    setFlowMismatch(approval.site_kind !== selectedSite);
+  }, [approval, flow]);
+
   useTaskEvents(taskId, {
     enabled: Boolean(taskId) && !TERMINAL_STATES.has(taskState),
     onEvent: applyEvent,
@@ -188,7 +203,14 @@ export function useAssistant() {
             state: snapshot.state,
             evidence: snapshot.evidence || null,
             summary_en: snapshot.error || snapshot.state,
-            summary_hi: snapshot.error || snapshot.state,
+            summary_hi: snapshot.error_hi || snapshot.error || snapshot.state,
+            reason: snapshot.reason || null,
+            needs_human_kind: snapshot.needs_human_kind || null,
+            flow_id: snapshot.flow_id || null,
+            schemes: Array.isArray(snapshot.schemes) ? snapshot.schemes : [],
+            offer_demo:
+              snapshot.flow_id === "myscheme_discovery" &&
+              ["could_not_finish", "outcome_unknown"].includes(snapshot.state),
           });
         }
       } catch {
@@ -223,12 +245,22 @@ export function useAssistant() {
       setTaskState(state);
       setResult({
         state,
-        evidence: null,
-        summary_en: response.note_en || response.note || "Stopped. Actions already taken may remain.",
-        summary_hi: response.note_hi || "रोक दिया गया। पहले किए गए काम का असर रह सकता है।",
-        note: languageRef.current === "hi"
-          ? response.note_hi || response.note || null
-          : response.note_en || response.note || null,
+        evidence: response.evidence || null,
+        summary_en:
+          response.summary_en ||
+          response.note_en ||
+          response.note ||
+          "Stopped. Actions already taken may remain.",
+        summary_hi:
+          response.summary_hi ||
+          response.note_hi ||
+          "रोक दिया गया। पहले किए गए काम का असर रह सकता है।",
+        reason: response.reason || null,
+        needs_human_kind: response.needs_human_kind || null,
+        flow_id: response.flow_id || null,
+        schemes: Array.isArray(response.schemes) ? response.schemes : [],
+        offer_demo: response.offer_demo === true,
+        note: response.note_key || null,
       });
       setApproval(null);
       setBusy(false);
@@ -279,6 +311,7 @@ export function useAssistant() {
       setApproval(null);
       setProgress([]);
       setStreamingUrl(null);
+      setLiveBrowserAction(null);
       setFlowMismatch(false);
       setUserUtterance(text);
       setAssistantText("");
@@ -372,6 +405,7 @@ export function useAssistant() {
     setProgress([]);
     setApproval(null);
     setStreamingUrl(null);
+    setLiveBrowserAction(null);
     setResult(null);
     setBusy(false);
     setUserUtterance("");
@@ -419,6 +453,7 @@ export function useAssistant() {
     progress,
     approval,
     streamingUrl,
+    liveBrowserAction,
     result,
     busy,
     approvalBusy,

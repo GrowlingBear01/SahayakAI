@@ -1,0 +1,160 @@
+{
+  "milestone": "M10",
+  "scope": "20 sequential TinyFish full demo-form runs with fake data",
+  "started_at": "2026-10-24T19:04:34.643349+00:00",
+  "updated_at": "2026-10-24T19:42:38.533886+00:00",
+  "wallet_before_usd": 36.808,
+  "wallet_after_usd": 31.32,
+  "estimated_wallet_spend_usd": 5.488,
+  "runs": [
+    {
+      "cycle": 1,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 68.812,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 2,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 99.122,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 3,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 131.022,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 4,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 99.018,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 5,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 99.396,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 6,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 129.885,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 7,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 156.803,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 8,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 129.711,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 9,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 162.133,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 10,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 68.599,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 11,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 99.153,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 12,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 156.385,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 13,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 98.575,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 14,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 98.671,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 15,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 98.371,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 16,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 98.98,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 17,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 98.85,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 18,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 98.373,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 19,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 159.808,
+      "tinyfish_runs": 2
+    },
+    {
+      "cycle": 20,
+      "passed": true,
+      "outcome": "done",
+      "latency_seconds": 129.296,
+      "tinyfish_runs": 2
+    }
+  ],
+  "summary": {
+    "target_runs": 20,
+    "completed_runs": 20,
+    "passes": 20,
+    "failures": 0,
+    "pass_rate": 1.0,
+    "median_latency_seconds": 99.138
+  },
+  "backup_video": "not_recorded"
+}

@@ -5,7 +5,13 @@ from fastapi.responses import StreamingResponse
 
 from .flow_loader import load_flows
 from .orchestrator import orchestrator
-from .schemas import AnswerRequest, ApproveRequest, CreateTaskRequest, TaskState
+from .schemas import (
+    AnswerRequest,
+    ApproveRequest,
+    CreateTaskRequest,
+    FlowType,
+    TaskState,
+)
 
 
 app = FastAPI(title="SahayakAI")
@@ -84,6 +90,8 @@ async def stop_task(task_id: str) -> dict[str, object]:
         task = await orchestrator.stop(task_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail="task not found") from error
+    flow = orchestrator.flows.get(task.flow_id) if task.flow_id else None
+    is_discovery = flow is not None and flow.flow_type == FlowType.DISCOVERY
     if task.state == TaskState.SUBMITTING:
         note_en = (
             "Stop requested during submission. The backend is checking whether "
@@ -91,23 +99,54 @@ async def stop_task(task_id: str) -> dict[str, object]:
         )
         note_hi = "जमा करते समय रोकने का अनुरोध मिला। डेमो साइट पर स्थिति जाँची जा रही है।"
     elif task.state == TaskState.DONE:
-        note_en = "The demo submission was already verified."
-        note_hi = "डेमो जमा होने की पुष्टि पहले ही हो चुकी है।"
+        if is_discovery:
+            note_en = "The read-only myScheme search is already complete."
+            note_hi = "myScheme पर केवल पढ़कर खोज पूरी हो चुकी है।"
+        else:
+            note_en = "The demo submission was already verified."
+            note_hi = "डेमो जमा होने की पुष्टि पहले ही हो चुकी है।"
     elif task.state == TaskState.OUTCOME_UNKNOWN:
-        note_en = (
-            "The submission outcome is unknown. Check the demo site before "
-            "taking any further action; do not retry automatically."
-        )
-        note_hi = (
-            "जमा होने की स्थिति अज्ञात है। आगे कुछ करने से पहले डेमो साइट जाँचें; "
-            "अपने-आप दोबारा न भेजें।"
-        )
+        if is_discovery:
+            note_en = (
+                "myScheme results could not be confirmed. You can try the demo form "
+                "instead; no application was submitted."
+            )
+            note_hi = (
+                "myScheme के परिणामों की पुष्टि नहीं हो सकी। इसके बजाय डेमो फ़ॉर्म "
+                "आज़मा सकते हैं; कोई आवेदन जमा नहीं हुआ।"
+            )
+        else:
+            note_en = (
+                "The submission outcome is unknown. Check the demo site before "
+                "taking any further action; do not retry automatically."
+            )
+            note_hi = (
+                "जमा होने की स्थिति अज्ञात है। आगे कुछ करने से पहले डेमो साइट जाँचें; "
+                "अपने-आप दोबारा न भेजें।"
+            )
     else:
         note_en = "Stopped. Actions already taken may remain."
         note_hi = "रोक दिया गया। पहले किए गए काम का असर रह सकता है।"
     return {
         "ok": True,
         "state": task.state.value,
+        "evidence": task.evidence,
+        "reason": task.reason,
+        "needs_human_kind": task.needs_human_kind,
+        "flow_id": task.flow_id,
+        "schemes": [scheme.model_dump() for scheme in task.schemes],
+        "offer_demo": (
+            is_discovery
+            and task.state
+            in {TaskState.COULD_NOT_FINISH, TaskState.OUTCOME_UNKNOWN}
+        ),
+        "summary_en": task.error or note_en,
+        "summary_hi": task.error_hi or note_hi,
+        "note_key": (
+            "stop_too_late"
+            if task.state == TaskState.DONE and task.cancelled
+            else None
+        ),
         "note": note_en,
         "note_en": note_en,
         "note_hi": note_hi,

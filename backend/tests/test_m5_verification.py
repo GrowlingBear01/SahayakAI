@@ -169,7 +169,7 @@ class M5VerificationTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_unverified_agent_report_is_unknown_and_cannot_be_retried(self) -> None:
+    def test_unverified_agent_report_is_not_submitted_and_cannot_be_retried(self) -> None:
         async def scenario() -> None:
             submission_store = RecordingMockStore(self.database_path)
             agent = UnverifiedAgent()
@@ -189,8 +189,9 @@ class M5VerificationTests(unittest.TestCase):
                 task.task_id, ApproveRequest(approval_id=submit_approval_id)
             )
 
-            self.assertEqual(task.state, TaskState.OUTCOME_UNKNOWN)
-            self.assertIn("Do not retry", task.error)
+            self.assertEqual(task.state, TaskState.COULD_NOT_FINISH)
+            self.assertEqual(task.reason, "unverified_claim")
+            self.assertIn("no server record", task.error)
             self.assertEqual(agent.submit_calls, 1)
             self.assertEqual(submission_store.submission_count(), 0)
             with self.assertRaises(ValueError):
@@ -318,11 +319,11 @@ class M5VerificationTests(unittest.TestCase):
             )
             await agent.started.wait()
             stopped = await orchestrator.stop(task.task_id)
-            self.assertEqual(stopped.state, TaskState.SUBMITTING)
+            self.assertEqual(stopped.state, TaskState.STOPPED)
 
             agent.release.set()
             final_task = await pending_submission
-            self.assertEqual(final_task.state, TaskState.OUTCOME_UNKNOWN)
+            self.assertEqual(final_task.state, TaskState.STOPPED)
             self.assertEqual(submission_store.submission_count(), 0)
 
         asyncio.run(scenario())

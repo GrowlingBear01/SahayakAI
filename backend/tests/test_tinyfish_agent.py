@@ -8,11 +8,24 @@ from backend.agents.tinyfish_agent import TinyFishAgent
 class TinyFishAgentTests(unittest.IsolatedAsyncioTestCase):
     async def test_polling_returns_fields_live_view_and_screenshot(self) -> None:
         requests: list[httpx.Request] = []
+        progress: list[tuple[str | None, str | None]] = []
+        poll_count = 0
 
         def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal poll_count
             requests.append(request)
             if request.url.path.endswith("/run-async"):
                 return httpx.Response(200, json={"run_id": "run-1"})
+            poll_count += 1
+            if poll_count == 1:
+                return httpx.Response(
+                    200,
+                    json={
+                        "status": "RUNNING",
+                        "streaming_url": "https://stream.example/run-1",
+                        "steps": [{"action": "Opened the form"}],
+                    },
+                )
             return httpx.Response(
                 200,
                 json={
@@ -28,7 +41,12 @@ class TinyFishAgentTests(unittest.IsolatedAsyncioTestCase):
                         "problems": [],
                     },
                     "streaming_url": "https://stream.example/run-1",
-                    "steps": [{"screenshot": "https://shot.example/1"}],
+                    "steps": [
+                        {
+                            "action": "Opened the form",
+                            "screenshot": "https://shot.example/1",
+                        }
+                    ],
                 },
             )
 
@@ -36,13 +54,26 @@ class TinyFishAgentTests(unittest.IsolatedAsyncioTestCase):
             transport=httpx.MockTransport(handler), base_url="https://agent.test"
         )
         agent = TinyFishAgent("test-key", base_url="https://agent.test", poll_interval=0, client=client)
-        result = await agent.run("https://demo.example/form", "fill")
+
+        async def on_progress(url, action):
+            progress.append((url, action))
+
+        result = await agent.run_with_callback(
+            "https://demo.example/form",
+            "fill",
+            None,
+            on_progress,
+        )
         await client.aclose()
 
         self.assertTrue(result.ok)
         self.assertEqual(result.reported_fields["age"], "72")
         self.assertEqual(result.screenshot_url, "https://shot.example/1")
         self.assertEqual(result.streaming_url, "https://stream.example/run-1")
+        self.assertEqual(
+            progress,
+            [("https://stream.example/run-1", "Opened the form")],
+        )
         self.assertEqual(requests[0].method, "POST")
         self.assertEqual(requests[0].url.path, "/v1/automation/run-async")
         self.assertNotIn("test-key", requests[0].content.decode())

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -34,6 +35,16 @@ class TinyFishAgent(BrowserAgent):
         self._owned_client: httpx.AsyncClient | None = None
 
     async def run(self, url: str, goal: str) -> RunResult:
+        return await self.run_with_callback(url, goal, None)
+
+    async def run_with_callback(
+        self,
+        url: str,
+        goal: str,
+        on_run_started: Callable[[str], None] | None,
+        on_progress: Callable[[str | None, str | None], Awaitable[None]]
+        | None = None,
+    ) -> RunResult:
         client = await self._get_client()
         try:
             response = await client.post(
@@ -46,9 +57,12 @@ class TinyFishAgent(BrowserAgent):
             run_id = response.json().get("run_id")
             if not isinstance(run_id, str) or not run_id:
                 return RunResult(False, "", error="TinyFish did not return a run_id")
+            if on_run_started is not None:
+                on_run_started(run_id)
 
             deadline = asyncio.get_running_loop().time() + self.timeout_seconds
             latest: dict[str, Any] = {}
+            last_progress: tuple[str | None, str | None] = (None, None)
             while asyncio.get_running_loop().time() < deadline:
                 await asyncio.sleep(self.poll_interval)
                 status_response = await client.get(
@@ -57,6 +71,10 @@ class TinyFishAgent(BrowserAgent):
                 if status_response.is_error:
                     return self._api_error(status_response, run_id)
                 latest = status_response.json()
+                progress = self._progress(latest)
+                if on_progress is not None and progress != last_progress:
+                    await on_progress(*progress)
+                    last_progress = progress
                 if latest.get("status") in TERMINAL_STATUSES:
                     return self._run_result(run_id, latest)
 
@@ -226,3 +244,17 @@ class TinyFishAgent(BrowserAgent):
             if isinstance(step, dict) and step.get("screenshot"):
                 return str(step["screenshot"])
         return None
+
+    @staticmethod
+    def _progress(run: dict[str, Any]) -> tuple[str | None, str | None]:
+        streaming_url = run.get("streaming_url")
+        if not isinstance(streaming_url, str) or not streaming_url:
+            streaming_url = None
+        steps = run.get("steps")
+        action = None
+        if isinstance(steps, list):
+            for step in reversed(steps):
+                if isinstance(step, dict) and isinstance(step.get("action"), str):
+                    action = step["action"].strip()[:500] or None
+                    break
+        return streaming_url, action

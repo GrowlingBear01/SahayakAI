@@ -124,6 +124,7 @@ export default function App() {
           <LiveBrowserView
             language={language}
             url={assistant.streamingUrl}
+            action={assistant.liveBrowserAction}
             active={taskActive || Boolean(assistant.streamingUrl)}
           />
           <ApprovalCard
@@ -136,7 +137,15 @@ export default function App() {
             onEdit={(edits) => assistant.approve(edits)}
             onCancel={assistant.cancelApproval}
           />
-          <ResultCard language={language} result={assistant.result} flow={flow} />
+          <ResultCard
+            language={language}
+            result={assistant.result}
+            onSwitchDemo={() => {
+              assistant.newConversation();
+              assistant.setFlow("demo");
+              assistant.setTyped(t("demoFallbackRequest", language));
+            }}
+          />
         </aside>
       </div>
 

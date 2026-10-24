@@ -162,6 +162,20 @@ class MockStore:
                 )
                 return cursor.rowcount
 
+    def revoke_token(self, token: str, reason: str) -> int:
+        now = int(time.time())
+        with closing(self._connect()) as connection:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE tokens
+                    SET revoked_at = ?, revoke_reason = ?
+                    WHERE token = ? AND used_at IS NULL AND revoked_at IS NULL
+                    """,
+                    (now, reason, token),
+                )
+                return cursor.rowcount
+
     def verify_submission(
         self, task_id: str, token: str, payload: dict[str, Any]
     ) -> VerifiedSubmission | None:

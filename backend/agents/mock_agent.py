@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from .base import BrowserAgent, CancelResult, RunResult
@@ -15,7 +16,21 @@ class MockBrowserAgent(BrowserAgent):
         self._cancelled: set[str] = set()
 
     async def run(self, url: str, goal: str) -> RunResult:
+        return await self.run_with_callback(url, goal, None)
+
+    async def run_with_callback(
+        self,
+        url: str,
+        goal: str,
+        on_run_started: Callable[[str], None] | None,
+        on_progress: Callable[[str | None, str | None], Awaitable[None]]
+        | None = None,
+    ) -> RunResult:
         run_id = str(uuid4())
+        if on_run_started is not None:
+            on_run_started(run_id)
+        if on_progress is not None:
+            await on_progress(None, "Running the local mock browser agent.")
         await asyncio.sleep(0.05)
         if run_id in self._cancelled:
             return RunResult(False, run_id, error="mock run cancelled")
