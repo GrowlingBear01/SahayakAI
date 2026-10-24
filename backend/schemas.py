@@ -94,6 +94,9 @@ class Task(BaseModel):
     reported_fields: dict[str, str] | None = None
     evidence: dict[str, Any] | None = None
     error: str | None = None
+    error_hi: str | None = None
+    clarifying_question_en: str | None = None
+    clarifying_question_hi: str | None = None
 
 
 class CreateTaskRequest(BaseModel):

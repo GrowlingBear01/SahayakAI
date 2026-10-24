@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import secrets
 import sqlite3
 import time
@@ -10,7 +11,11 @@ from threading import Lock
 from typing import Any
 
 
-APPROVAL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+DEFAULT_DATABASE_PATH = Path(__file__).with_name("mock.db")
+
+
+def database_path() -> str:
+    return os.getenv("MOCK_DATABASE_PATH", str(DEFAULT_DATABASE_PATH))
 
 
 def canonical_payload(payload: dict[str, Any]) -> str:
@@ -27,6 +32,14 @@ class SubmissionResult:
     ok: bool
     reason: str | None = None
     reference_number: str | None = None
+
+
+@dataclass(frozen=True)
+class VerifiedSubmission:
+    task_id: str
+    payload_hash: str
+    reference_number: str
+    created_at: str
 
 
 class MockStore:
@@ -72,8 +85,10 @@ class MockStore:
     def issue_token(
         self, task_id: str, payload: dict[str, Any], ttl_seconds: int = 180
     ) -> str:
+        if ttl_seconds <= 0:
+            raise ValueError("token TTL must be positive")
         now = int(time.time())
-        token = "".join(secrets.choice(APPROVAL_ALPHABET) for _ in range(8))
+        token = secrets.token_urlsafe(24)
         with closing(self._connect()) as connection:
             with connection:
                 connection.execute("BEGIN IMMEDIATE")
@@ -115,7 +130,7 @@ class MockStore:
                     return SubmissionResult(False, "token_expired")
                 if not secrets.compare_digest(token, approval_code):
                     return SubmissionResult(False, "invalid_approval_code")
-                if row["payload_hash"] != payload_hash(payload):
+                if not secrets.compare_digest(row["payload_hash"], payload_hash(payload)):
                     return SubmissionResult(False, "payload_mismatch")
 
                 reference = f"DEMO-{secrets.token_hex(4).upper()}"
@@ -132,6 +147,45 @@ class MockStore:
                     "UPDATE tokens SET used_at = ? WHERE token = ?", (now, token)
                 )
                 return SubmissionResult(True, reference_number=reference)
+
+    def revoke_task_tokens(self, task_id: str, reason: str) -> int:
+        now = int(time.time())
+        with closing(self._connect()) as connection:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE tokens
+                    SET revoked_at = ?, revoke_reason = ?
+                    WHERE task_id = ? AND used_at IS NULL AND revoked_at IS NULL
+                    """,
+                    (now, reason, task_id),
+                )
+                return cursor.rowcount
+
+    def verify_submission(
+        self, task_id: str, token: str, payload: dict[str, Any]
+    ) -> VerifiedSubmission | None:
+        expected_hash = payload_hash(payload)
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                """
+                SELECT s.task_id, s.payload_hash, s.reference_number, s.created_at
+                FROM submissions AS s
+                JOIN tokens AS t ON t.token = s.token
+                WHERE s.token = ? AND s.task_id = ? AND s.payload_hash = ?
+                  AND t.task_id = s.task_id AND t.payload_hash = s.payload_hash
+                  AND t.used_at IS NOT NULL
+                """,
+                (token, task_id, expected_hash),
+            ).fetchone()
+        if row is None:
+            return None
+        return VerifiedSubmission(
+            task_id=row["task_id"],
+            payload_hash=row["payload_hash"],
+            reference_number=row["reference_number"],
+            created_at=row["created_at"],
+        )
 
     def submission_count(self) -> int:
         with closing(self._connect()) as connection:

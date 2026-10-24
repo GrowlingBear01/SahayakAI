@@ -3,6 +3,7 @@ import unittest
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 from mock_site.store import MockStore
 
@@ -46,6 +47,38 @@ class MockStoreTests(unittest.TestCase):
         self.assertEqual(
             self.store.submit(token, token, edited).reason, "payload_mismatch"
         )
+
+    def test_expired_token_is_rejected(self) -> None:
+        with patch("mock_site.store.time.time", return_value=100):
+            token = self.store.issue_token("task-1", self.payload, ttl_seconds=1)
+        with patch("mock_site.store.time.time", return_value=102):
+            result = self.store.submit(token, token, self.payload)
+        self.assertEqual(result.reason, "token_expired")
+
+    def test_revoked_token_is_rejected(self) -> None:
+        token = self.store.issue_token("task-1", self.payload)
+        self.assertEqual(self.store.revoke_task_tokens("task-1", "user_stopped"), 1)
+        self.assertEqual(
+            self.store.submit(token, token, self.payload).reason, "token_revoked"
+        )
+
+    def test_verification_requires_matching_task_and_payload(self) -> None:
+        token = self.store.issue_token("task-1", self.payload)
+        self.assertTrue(self.store.submit(token, token, self.payload).ok)
+
+        verified = self.store.verify_submission("task-1", token, self.payload)
+        self.assertIsNotNone(verified)
+        self.assertTrue(verified.reference_number.startswith("DEMO-"))
+        self.assertIsNone(self.store.verify_submission("task-2", token, self.payload))
+        self.assertIsNone(
+            self.store.verify_submission(
+                "task-1", token, {**self.payload, "age": 73}
+            )
+        )
+
+    def test_rejects_non_positive_token_ttl(self) -> None:
+        with self.assertRaises(ValueError):
+            self.store.issue_token("task-1", self.payload, ttl_seconds=0)
 
     def test_concurrent_submits_create_one_record(self) -> None:
         token = self.store.issue_token("task-1", self.payload)

@@ -45,8 +45,12 @@ async def task_events(task_id: str) -> StreamingResponse:
 
 @app.post("/tasks/{task_id}/answer")
 async def answer_task(task_id: str, request: AnswerRequest) -> dict[str, bool]:
-    if orchestrator.store.get(task_id) is None:
-        raise HTTPException(status_code=404, detail="task not found")
+    try:
+        await orchestrator.answer(task_id, request.text)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="task not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return {"ok": True}
 
 
@@ -80,10 +84,33 @@ async def stop_task(task_id: str) -> dict[str, object]:
         task = await orchestrator.stop(task_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail="task not found") from error
+    if task.state == TaskState.SUBMITTING:
+        note_en = (
+            "Stop requested during submission. The backend is checking whether "
+            "the demo site accepted it."
+        )
+        note_hi = "जमा करते समय रोकने का अनुरोध मिला। डेमो साइट पर स्थिति जाँची जा रही है।"
+    elif task.state == TaskState.DONE:
+        note_en = "The demo submission was already verified."
+        note_hi = "डेमो जमा होने की पुष्टि पहले ही हो चुकी है।"
+    elif task.state == TaskState.OUTCOME_UNKNOWN:
+        note_en = (
+            "The submission outcome is unknown. Check the demo site before "
+            "taking any further action; do not retry automatically."
+        )
+        note_hi = (
+            "जमा होने की स्थिति अज्ञात है। आगे कुछ करने से पहले डेमो साइट जाँचें; "
+            "अपने-आप दोबारा न भेजें।"
+        )
+    else:
+        note_en = "Stopped. Actions already taken may remain."
+        note_hi = "रोक दिया गया। पहले किए गए काम का असर रह सकता है।"
     return {
         "ok": True,
         "state": task.state.value,
-        "note": "Stopped. Actions already taken may remain.",
+        "note": note_en,
+        "note_en": note_en,
+        "note_hi": note_hi,
     }
 
 

@@ -63,6 +63,7 @@ export function useAssistant() {
 
   const spokenKeys = useRef(new Set());
   const inFlight = useRef(false);
+  const answering = useRef(false);
   const approvalLock = useRef(null);
   const taskIdRef = useRef(null);
   const taskStateRef = useRef(null);
@@ -211,13 +212,23 @@ export function useAssistant() {
         });
         return;
       }
+      if (!TERMINAL_STATES.has(state)) {
+        setTaskState(state);
+        setToast({
+          kind: "warning",
+          text: response.note_en || response.note || "Stop requested. Waiting for verified status.",
+        });
+        return;
+      }
       setTaskState(state);
       setResult({
         state,
         evidence: null,
-        summary_en: response?.note || "Stopped. Actions already taken may remain.",
-        summary_hi: "रोक दिया गया। पहले किए गए काम का असर रह सकता है।",
-        note: response?.note || null,
+        summary_en: response.note_en || response.note || "Stopped. Actions already taken may remain.",
+        summary_hi: response.note_hi || "रोक दिया गया। पहले किए गए काम का असर रह सकता है।",
+        note: languageRef.current === "hi"
+          ? response.note_hi || response.note || null
+          : response.note_en || response.note || null,
       });
       setApproval(null);
       setBusy(false);
@@ -238,23 +249,30 @@ export function useAssistant() {
   const startTask = useCallback(
     async (rawText) => {
       const text = String(rawText || typed || "").trim();
-      if (!text || inFlight.current) return;
+      if (!text) return;
       if (isStopCommand(text) && taskIdRef.current && isActiveTask(taskStateRef.current)) {
         await stopTask();
         return;
       }
 
       if (taskIdRef.current && taskStateRef.current === "needs_info") {
+        if (answering.current) return;
+        answering.current = true;
+        setTaskState("planning");
         try {
           await api.answer(taskIdRef.current, text);
           setUserUtterance(text);
           setTyped("");
         } catch {
+          setTaskState("needs_info");
           setToast({ kind: "error", messageKey: "backendDown" });
+        } finally {
+          answering.current = false;
         }
         return;
       }
 
+      if (inFlight.current) return;
       inFlight.current = true;
       setBusy(true);
       setResult(null);
@@ -300,6 +318,7 @@ export function useAssistant() {
       try {
         await api.approve(taskId, usedId, edits);
         approvalLock.current = null;
+        answering.current = false;
         const snapshot = await api.getTask(taskId);
         setTask(snapshot);
         setTaskState(snapshot.state);

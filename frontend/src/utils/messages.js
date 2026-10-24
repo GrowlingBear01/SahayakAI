@@ -72,6 +72,10 @@ export const copy = {
     en: "The backend proposed the demo form, not a real government website. Choose Demo Form to continue, or cancel. The flow was not switched for you.",
     hi: "सर्वर ने असली सरकारी वेबसाइट नहीं, डेमो फ़ॉर्म प्रस्तावित किया है। जारी रखने के लिए डेमो फ़ॉर्म चुनें, या रद्द करें। प्रवाह आपके बिना नहीं बदला गया।",
   },
+  fieldMismatch: {
+    en: "The value read from the form differs from the approved value. Edit and refill before submitting.",
+    hi: "फ़ॉर्म से पढ़ी गई जानकारी अनुमोदित जानकारी से अलग है। जमा करने से पहले बदलें और फ़ॉर्म फिर से भरें।",
+  },
   possibleMatches: {
     en: "Possible matches from official pages — not a guarantee of eligibility.",
     hi: "आधिकारिक पेजों से संभावित परिणाम — पात्रता की गारंटी नहीं।",

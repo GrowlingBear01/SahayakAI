@@ -1,17 +1,12 @@
-import os
 from html import escape
-from pathlib import Path
 
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
 
-from .store import MockStore
+from .store import MockStore, database_path
 
 
-DATABASE_PATH = os.getenv(
-    "MOCK_DATABASE_PATH", str(Path(__file__).with_name("mock.db"))
-)
-store = MockStore(DATABASE_PATH)
+store = MockStore(database_path())
 app = FastAPI(title="SahayakAI Demo Form")
 
 

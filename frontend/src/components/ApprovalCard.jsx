@@ -33,6 +33,7 @@ export default function ApprovalCard({
     language === "hi"
       ? approval.data_notice_hi || t("dataNoticeFallback", language)
       : approval.data_notice_en || t("dataNoticeFallback", language);
+  const hasMismatch = submit && fields.some((field) => field.mismatch);
 
   return (
     <section className="panel card approval" aria-label={t(submit ? "submitApprovalTitle" : "startApprovalTitle", language)}>
@@ -44,6 +45,7 @@ export default function ApprovalCard({
       {fields.map((field) => (
         <label className="field" key={field.key}>
           {language === "hi" ? field.label_hi || field.label_en : field.label_en || field.label_hi}
+          {field.mismatch ? <span className="notice">{t("fieldMismatch", language)}</span> : null}
           {editing ? (
             <input
               value={draft[field.key] ?? ""}
@@ -67,7 +69,12 @@ export default function ApprovalCard({
             {t("saveEdits", language)}
           </button>
         ) : (
-          <button type="button" className="primary" disabled={busy} onClick={() => onApprove(null)}>
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || hasMismatch}
+            onClick={() => onApprove(null)}
+          >
             {t("approve", language)}
           </button>
         )}

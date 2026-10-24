@@ -15,21 +15,31 @@ The myScheme workflow will be included in the demo only if it proves reliable du
 
 ## Current status
 
-This repository is at the initial application-scaffold stage.
+The repository contains an end-to-end bilingual demo flow. The current browser
+agent defaults to a deterministic mock adapter; live TinyFish integration is
+available as a separate adapter and must be configured explicitly.
 
-**Implemented so far**
-- A basic FastAPI backend with a health endpoint.
-- A React application using Vite.
-- Initial dependency definitions and an environment-variable template.
+**Implemented**
+- FastAPI task, approval, stop, flow, and replayable SSE endpoints.
+- React/Vite interface with typed requests, approval review/edit controls,
+  progress, voice controls, and task results.
+- Gemini planner using schema-constrained JSON, a needs-information answer loop,
+  and server-side validation against the selected flow's declared fields.
+- Separate SQLite-backed demo form with expiring, revocable, single-use
+  submission codes and payload binding.
+- Server-authoritative success verification: the backend reports a successful
+  submission only when the demo site's SQLite record matches the task, approved
+  payload, and one-time code.
+- Conservative handling for uncertain submission outcomes; the application
+  does not automatically retry a submission without verified status.
+- TinyFish adapter with polling, cancellation handling, screenshots, and live
+  browser-view URL support.
 
-**Still to be implemented**
-- TinyFish browser automation.
-- The demo website and its submission verification.
-- Task planning and orchestration.
-- Approval controls, progress updates, and STOP handling.
-- Hindi and English voice interaction.
-
-This list will be updated as the features are implemented and tested.
+**Not yet implemented**
+- Production-grade planner and deployments with a configured Gemini API key.
+- Real government website submission. This is intentionally out of scope; only
+  the clearly labelled fake demo form may be submitted.
+- Production database-backed task persistence and deployment hardening.
 
 ## Tech stack
 
@@ -43,6 +53,10 @@ This list will be updated as the features are implemented and tested.
 
 You'll need Python, Node.js, and npm installed.
 
+Before starting the backend, copy `.env.example` to `.env` and set
+`LLM_API_KEY` to your Gemini API key. The key stays on the backend and must not
+be committed or pasted into chat.
+
 ### 1. Start the backend
 
 From the repository root, run these commands in PowerShell:
@@ -51,12 +65,18 @@ From the repository root, run these commands in PowerShell:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend\requirements.txt
-python -m uvicorn backend.main:app --reload
+python -m uvicorn backend.main:app --reload --env-file .env
 ```
 
-The initial health endpoint is available at:
+The planner uses `LLM_PROVIDER=gemini` and `LLM_MODEL=gemini-3.8-flash` by
+default. It sends requests through Gemini's stateless Interactions API and
+validates the JSON response before any task can reach approval.
 
-`http://127.0.0.1:8000/health`
+The backend API docs and health endpoint are available at:
+
+- `http://127.0.0.1:8000/docs`
+- `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/flows`
 
 ### 2. Start the separate demo site
 
@@ -83,7 +103,15 @@ Vite will print the local address for the frontend.
 Run the backend and mock-site tests from the repository root:
 
 ```powershell
-python -m unittest backend.tests.test_api mock_site.tests.test_store -v
+python -m unittest backend.tests.test_api backend.tests.test_tinyfish_agent backend.tests.test_planner backend.tests.test_m5_verification backend.tests.test_m6_planner mock_site.tests.test_store mock_site.tests.test_app -v
+```
+
+Run frontend tests and a production build from `frontend`:
+
+```powershell
+npm ci
+npm test
+npm run build
 ```
 
 ### 4. Configure environment variables

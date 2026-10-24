@@ -25,6 +25,7 @@ export default function ResultCard({ language, result, flow }) {
     <section className="panel card result" data-state={result.state} aria-live="polite">
       <h2>{t(titleKey, language)}</h2>
       <p>{summary}</p>
+      {result.note ? <p className="muted">{result.note}</p> : null}
       {flow === "discovery" ? <p className="muted">{t("possibleMatches", language)}</p> : null}
       <p className="muted">{t("notProof", language)}</p>
       {kind ? (
