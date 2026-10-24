@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "vite build"
   },
   "dependencies": {
     "react": "19.0.0",
@@ -14,7 +16,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.3.4",
-    "vite": "6.0.7"
+    "vite": "6.0.7",
+    "vitest": "3.0.5"
   }
 }
-

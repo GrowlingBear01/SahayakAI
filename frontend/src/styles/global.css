@@ -1,0 +1,127 @@
+:root {
+  --bg: #101322;
+  --bg-elevated: #191d30;
+  --bg-glass: rgba(25, 29, 48, 0.72);
+  --text: #f5f6fc;
+  --muted: #a7adc2;
+  --indigo: #7775ff;
+  --cyan: #59d8f5;
+  --success: #35c98a;
+  --warning: #f3b85a;
+  --danger: #ff626e;
+  --border: rgba(245, 246, 252, 0.08);
+  --shadow: 0 24px 80px rgba(5, 8, 20, 0.45);
+  --radius: 24px;
+  --font: "Plus Jakarta Sans", "Noto Sans Devanagari", system-ui, sans-serif;
+  --focus: 0 0 0 3px rgba(89, 216, 245, 0.55);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(119, 117, 255, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 0% 100%, rgba(89, 216, 245, 0.1), transparent 50%),
+    var(--bg);
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 20px 24px 32px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.live-region {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.panel {
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .app-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
