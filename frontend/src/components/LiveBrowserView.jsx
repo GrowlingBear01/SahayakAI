@@ -13,7 +13,7 @@ export default function LiveBrowserView({ language, url, active }) {
         </div>
       ) : (
         <div className="browser-frame">
-          <p className="unavailable">{t("previewUnavailable", language)}</p>
+          <p className="unavailable" role="status">{t("previewWaiting", language)}</p>
         </div>
       )}
     </section>

@@ -4,6 +4,14 @@ export const copy = {
     en: "Speak. Review. Approve. Then we act.",
     hi: "बोलें। जाँचें। अनुमति दें। तब हम काम करेंगे।",
   },
+  demoFlowAnnouncement: {
+    en: "Selected flow: Demo Form.",
+    hi: "चुना गया प्रवाह: डेमो फ़ॉर्म।",
+  },
+  discoveryFlowAnnouncement: {
+    en: "Selected flow: Real Website discovery.",
+    hi: "चुना गया प्रवाह: असली वेबसाइट खोज।",
+  },
   welcome: {
     en: "I can help you explore official information or fill a clearly labelled demo form. I will never submit anything without your approval.",
     hi: "मैं आधिकारिक जानकारी खोजने या साफ़ तौर पर डेमो फ़ॉर्म भरने में मदद कर सकता हूँ। आपकी अनुमति के बिना मैं कुछ जमा नहीं करूँगा।",
@@ -84,9 +92,27 @@ export const copy = {
     en: "Auto uses Hindi (hi-IN) based on your browser language. This is not automatic mixed-language recognition.",
     hi: "ऑटो आपके ब्राउज़र की भाषा के अनुसार हिंदी (hi-IN) चुनता है। यह मिश्रित भाषा की स्वतः पहचान नहीं है।",
   },
-  flowMismatch: {
+  flowMismatchDemo: {
     en: "The backend proposed the demo form, not a real government website. Choose Demo Form to continue, or cancel. The flow was not switched for you.",
     hi: "सर्वर ने असली सरकारी वेबसाइट नहीं, डेमो फ़ॉर्म प्रस्तावित किया है। जारी रखने के लिए डेमो फ़ॉर्म चुनें, या रद्द करें। प्रवाह आपके बिना नहीं बदला गया।",
+  },
+  flowMismatchReal: {
+    en: "The backend proposed a real website, not the Demo Form you selected. Choose Real Website to continue, or cancel. The flow was not switched for you.",
+    hi: "सर्वर ने आपके चुने हुए डेमो फ़ॉर्म के बजाय असली वेबसाइट प्रस्तावित की है। जारी रखने के लिए असली वेबसाइट चुनें, या रद्द करें। प्रवाह आपके बिना नहीं बदला गया।",
+  },
+  selectProposedFlow: { en: "Select the proposed flow", hi: "प्रस्तावित प्रवाह चुनें" },
+  switchToDemo: { en: "Choose Demo Form", hi: "डेमो फ़ॉर्म चुनें" },
+  switchToDemoHint: {
+    en: "This only changes the selected flow. It will not start or approve a task.",
+    hi: "इससे केवल चुना हुआ प्रवाह बदलेगा। कोई कार्य शुरू या स्वीकृत नहीं होगा।",
+  },
+  confirmOfficial: {
+    en: "These are possible matches, not an eligibility decision. Confirm details on each official page.",
+    hi: "ये केवल संभावित परिणाम हैं, पात्रता का निर्णय नहीं। हर आधिकारिक पेज पर विवरण की पुष्टि करें।",
+  },
+  previewWaiting: {
+    en: "Waiting for the backend to provide a live browser preview. No simulated page is shown.",
+    hi: "लाइव ब्राउज़र पूर्वावलोकन के लिए सर्वर की प्रतीक्षा है। कोई नकली पेज नहीं दिखाया जा रहा।",
   },
   possibleMatches: {
     en: "Possible matches from official pages — not a guarantee of eligibility.",

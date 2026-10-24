@@ -13,7 +13,7 @@ const EVIDENCE_LABEL = {
   verified_confirmation: "evidenceVerified",
 };
 
-export default function ResultCard({ language, result, flow }) {
+export default function ResultCard({ language, result, flow, onSwitchToDemo }) {
   if (!result) return null;
   const titleKey = TITLES[result.state] || "couldNotFinish";
   const evidence = result.evidence;
@@ -25,7 +25,20 @@ export default function ResultCard({ language, result, flow }) {
     <section className="panel card result" data-state={result.state} aria-live="polite">
       <h2>{t(titleKey, language)}</h2>
       <p>{summary}</p>
-      {flow === "discovery" ? <p className="muted">{t("possibleMatches", language)}</p> : null}
+      {flow === "discovery" ? (
+        <>
+          <p className="muted">{t("possibleMatches", language)}</p>
+          <p className="muted">{t("confirmOfficial", language)}</p>
+          {result.reason === "needs_human" ? (
+            <div className="actions">
+              <button type="button" className="ghost" onClick={onSwitchToDemo}>
+                {t("switchToDemo", language)}
+              </button>
+              <p className="muted">{t("switchToDemoHint", language)}</p>
+            </div>
+          ) : null}
+        </>
+      ) : null}
       <p className="muted">{t("notProof", language)}</p>
       {kind ? (
         <div className="evidence">

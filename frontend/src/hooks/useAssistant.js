@@ -7,6 +7,7 @@ import {
   isActiveTask,
   isStopCommand,
   resolvedLang,
+  t,
 } from "../utils/messages.js";
 import { useTaskEvents } from "./useTaskEvents.js";
 import { useVoice } from "./useVoice.js";
@@ -95,8 +96,8 @@ export function useAssistant() {
     if (event.state === "waiting_for_approval") {
       const nextApproval = approvalFromEvent(event);
       setApproval(nextApproval);
-      if (nextApproval?.site_kind === "demo" && flowRef.current === "discovery") {
-        setFlowMismatch(true);
+      if (nextApproval?.site_kind === "demo" || nextApproval?.site_kind === "real") {
+        setFlowMismatch((nextApproval.site_kind === "demo") !== (flowRef.current === "demo"));
       }
       const fields = fieldsWithKeys(nextApproval, {});
       const readback =
@@ -113,6 +114,7 @@ export function useAssistant() {
       }
     } else {
       setApproval(null);
+      setFlowMismatch(false);
       const key = eventKey(event);
       if (text && key && !spokenKeys.current.has(key)) {
         spokenKeys.current.add(key);
@@ -127,6 +129,13 @@ export function useAssistant() {
       inFlight.current = false;
     }
   }, []);
+
+  const chooseFlow = useCallback((nextFlow) => {
+    setFlow(nextFlow);
+    if (approval?.site_kind === "demo" || approval?.site_kind === "real") {
+      setFlowMismatch((approval.site_kind === "demo") !== (nextFlow === "demo"));
+    }
+  }, [approval]);
 
   const voice = useVoice({
     language,
@@ -267,6 +276,10 @@ export function useAssistant() {
       setTranscript("");
       spokenKeys.current = new Set();
       voice.stopSpeech();
+      voice.speak(t(flow === "demo" ? "demoFlowAnnouncement" : "discoveryFlowAnnouncement", language), {
+        lang: language,
+        key: `flow-start:${flow}:${Date.now()}`,
+      });
 
       const lang = language === "auto" ? "auto" : language;
       try {
@@ -287,7 +300,7 @@ export function useAssistant() {
         setToast({ kind: "error", messageKey: "backendDown" });
       }
     },
-    [language, stopTask, typed, voice],
+    [flow, language, stopTask, typed, voice],
   );
 
   const approve = useCallback(
@@ -389,7 +402,7 @@ export function useAssistant() {
     language,
     setLanguage,
     flow,
-    setFlow,
+    setFlow: chooseFlow,
     typed,
     setTyped,
     transcript,

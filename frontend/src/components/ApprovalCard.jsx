@@ -11,6 +11,7 @@ export default function ApprovalCard({
   onApprove,
   onEdit,
   onCancel,
+  onSwitchToFlow,
 }) {
   const [editing, setEditing] = useState(false);
   const fields = fieldsWithKeys(approval, taskValues);
@@ -33,13 +34,28 @@ export default function ApprovalCard({
     language === "hi"
       ? approval.data_notice_hi || t("dataNoticeFallback", language)
       : approval.data_notice_en || t("dataNoticeFallback", language);
+  const mismatchMessage = approval.site_kind === "demo" ? "flowMismatchDemo" : "flowMismatchReal";
+  const proposedFlow = approval.site_kind === "demo" ? "demo" : "discovery";
 
   return (
     <section className="panel card approval" aria-label={t(submit ? "submitApprovalTitle" : "startApprovalTitle", language)}>
       <h2>{t(submit ? "submitApprovalTitle" : "startApprovalTitle", language)}</h2>
       <p>{action}</p>
       <p className="muted">{approval.site_kind === "demo" ? t("demoForm", language) : t("realWebsite", language)}</p>
-      {flowMismatch ? <p className="notice">{t("flowMismatch", language)}</p> : null}
+      {flowMismatch ? <p className="notice">{t(mismatchMessage, language)}</p> : null}
+      {flowMismatch ? (
+        <div className="actions">
+          <button
+            type="button"
+            className="ghost"
+            disabled={busy}
+            onClick={() => onSwitchToFlow(proposedFlow)}
+          >
+            {t("selectProposedFlow", language)}
+          </button>
+          <p className="muted">{t("switchToDemoHint", language)}</p>
+        </div>
+      ) : null}
       <p className="notice">{notice}</p>
       {fields.map((field) => (
         <label className="field" key={field.key}>
@@ -61,13 +77,13 @@ export default function ApprovalCard({
           <button
             type="button"
             className="primary"
-            disabled={busy}
+            disabled={busy || flowMismatch}
             onClick={() => onEdit(coerceEdits(fields, draft))}
           >
             {t("saveEdits", language)}
           </button>
         ) : (
-          <button type="button" className="primary" disabled={busy} onClick={() => onApprove(null)}>
+          <button type="button" className="primary" disabled={busy || flowMismatch} onClick={() => onApprove(null)}>
             {t("approve", language)}
           </button>
         )}
