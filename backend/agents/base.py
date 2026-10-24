@@ -13,7 +13,13 @@ class RunResult:
     needs_human: str | None = None
 
 
+@dataclass(frozen=True)
+class CancelResult:
+    status: str
+    message: str | None = None
+
+
 class BrowserAgent(Protocol):
     async def run(self, url: str, goal: str) -> RunResult: ...
 
-    async def cancel(self, run_id: str) -> None: ...
+    async def cancel(self, run_id: str) -> CancelResult: ...
