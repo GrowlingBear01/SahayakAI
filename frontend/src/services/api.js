@@ -1,4 +1,5 @@
 const DEFAULT_BASE = "http://localhost:8000";
+const APPROVAL_TIMEOUT_MS = 150000;
 
 export class ApiError extends Error {
   constructor(code, status, detail) {
@@ -92,6 +93,7 @@ export const api = {
     return request(`/tasks/${encodeURIComponent(taskId)}/approve`, {
       method: "POST",
       body: { approval_id: approvalId, edits },
+      timeoutMs: APPROVAL_TIMEOUT_MS,
     });
   },
 

@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from uuid import uuid4
 
 from .agents.base import BrowserAgent, RunResult
+from .agents.factory import create_browser_agent
 from .agents.mock_agent import MockBrowserAgent
 from .config import settings
 from .flow_loader import load_flows
@@ -46,7 +47,12 @@ class Orchestrator:
     ) -> None:
         self.store = store
         self.submission_store = submission_store or MockStore(database_path())
-        self.agent = agent or MockBrowserAgent(self.submission_store)
+        self.agent = agent or create_browser_agent(
+            settings.browser_agent,
+            self.submission_store,
+            settings.tinyfish_api_key,
+            settings.tinyfish_base_url,
+        )
         self.planner = planner or GeminiPlanner(
             settings.llm_api_key,
             settings.llm_model,
@@ -517,13 +523,18 @@ class Orchestrator:
         task.approval_type = "submit"
         task.state = TaskState.WAITING_FOR_APPROVAL
         self.store.replace(task)
+        approval_data = self._approval_data(task, "submit")
+        if result.streaming_url:
+            approval_data["streaming_url"] = result.streaming_url
+        if result.screenshot_url:
+            approval_data["screenshot_url"] = result.screenshot_url
         await self._emit(
             task,
             "Review the filled details before submitting.",
             "जमा करने से पहले भरी हुई जानकारी जाँचें।",
             3,
             4,
-            self._approval_data(task, "submit"),
+            approval_data,
         )
 
     async def _submit(self, task_id: str, token: str) -> None:
@@ -591,15 +602,18 @@ class Orchestrator:
                 "डेमो आवेदन जमा हो गया।",
                 4,
                 4,
-                self._result_data(
-                    task,
-                    None,
-                    (
-                        "The submission was verified after a stop request."
-                        if task.cancelled
-                        else None
+                {
+                    **self._result_data(
+                        task,
+                        None,
+                        (
+                            "The submission was verified after a stop request."
+                            if task.cancelled
+                            else None
+                        ),
                     ),
-                ),
+                    "streaming_url": result.streaming_url,
+                },
             )
         else:
             self.submission_store.revoke_task_tokens(task_id, "verification_failed")
@@ -621,7 +635,10 @@ class Orchestrator:
                 "डेमो जमा होने की पुष्टि नहीं हो सकी। दोबारा न भेजें; पहले डेमो साइट जाँचें।",
                 4,
                 4,
-                self._result_data(task, "verification_failed"),
+                {
+                    **self._result_data(task, "verification_failed"),
+                    "streaming_url": result.streaming_url,
+                },
             )
 
     async def _fail(self, task: Task, error: str) -> None:

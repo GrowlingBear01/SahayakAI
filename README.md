@@ -72,6 +72,15 @@ The planner uses `LLM_PROVIDER=gemini` and `LLM_MODEL=gemini-3.8-flash` by
 default. It sends requests through Gemini's stateless Interactions API and
 validates the JSON response before any task can reach approval.
 
+The browser agent defaults to `BROWSER_AGENT=mock` for offline development.
+To run tasks with TinyFish, set `BROWSER_AGENT=tinyfish` and configure
+`TINYFISH_API_KEY` in `.env`. TinyFish must be able to reach the demo site over
+public HTTPS, so set `MOCK_SITE_BASE_URL` to the HTTPS tunnel URL for the
+separate mock-site app. Keep both processes on the same machine because they
+share the mock site's local SQLite verification database. When TinyFish is
+selected, a missing API key is a startup error; the backend will not silently
+fall back to the mock agent.
+
 The backend API docs and health endpoint are available at:
 
 - `http://127.0.0.1:8000/docs`
@@ -103,7 +112,7 @@ Vite will print the local address for the frontend.
 Run the backend and mock-site tests from the repository root:
 
 ```powershell
-python -m unittest backend.tests.test_api backend.tests.test_tinyfish_agent backend.tests.test_planner backend.tests.test_m5_verification backend.tests.test_m6_planner mock_site.tests.test_store mock_site.tests.test_app -v
+python -m unittest backend.tests.test_api backend.tests.test_agent_factory backend.tests.test_m4_runtime backend.tests.test_tinyfish_agent backend.tests.test_planner backend.tests.test_m5_verification backend.tests.test_m6_planner mock_site.tests.test_store mock_site.tests.test_app -v
 ```
 
 Run frontend tests and a production build from `frontend`:

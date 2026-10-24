@@ -35,6 +35,7 @@ describe("api contract", () => {
   });
 
   it("sends approval_id and edits exactly", async () => {
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
     globalThis.fetch = vi.fn(async (url, options) => {
       expect(String(url)).toMatch(/\/tasks\/t1\/approve$/);
       expect(JSON.parse(options.body)).toEqual({
@@ -43,7 +44,12 @@ describe("api contract", () => {
       });
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     });
-    await api.approve("t1", "appr-1", { age: 73 });
+    try {
+      await api.approve("t1", "appr-1", { age: 73 });
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 150000);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
   });
 
   it("does not invent a successful task payload on HTTP errors", async () => {

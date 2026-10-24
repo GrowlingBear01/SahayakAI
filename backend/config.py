@@ -8,6 +8,7 @@ class Settings:
     tinyfish_base_url: str = os.getenv(
         "TINYFISH_BASE_URL", "https://agent.tinyfish.ai"
     )
+    browser_agent: str = os.getenv("BROWSER_AGENT", "mock")
     llm_api_key: str = os.getenv("LLM_API_KEY", "")
     llm_provider: str = os.getenv("LLM_PROVIDER", "")
     llm_model: str = os.getenv("LLM_MODEL", "gemini-3.8-flash")
