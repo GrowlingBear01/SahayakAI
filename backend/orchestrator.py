@@ -250,7 +250,11 @@ class Orchestrator:
                 "label_en": field.label_en,
                 "label_hi": field.label_hi,
                 "value": str(task.values.get(field.key, "")),
-                "mismatch": False,
+                "mismatch": (
+                    task.reported_fields is not None
+                    and str(task.reported_fields.get(field.key, ""))
+                    != str(task.values.get(field.key, ""))
+                ),
             }
             for field in flow.fields
         ]

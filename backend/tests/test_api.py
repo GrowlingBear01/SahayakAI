@@ -1,8 +1,12 @@
 import unittest
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from backend.orchestrator import Orchestrator
+from backend.schemas import Task
+from backend.task_store import TaskStore
 
 
 class ApiTests(unittest.TestCase):
@@ -56,3 +60,16 @@ class ApiTests(unittest.TestCase):
 
         stopped = self.client.post(f"/tasks/{task_id}/stop")
         self.assertEqual(stopped.json()["state"], "stopped")
+
+    def test_approval_card_marks_reported_field_mismatch(self) -> None:
+        orchestrator = Orchestrator(TaskStore())
+        task = Task(task_id=str(uuid4()), flow_id="mock_scheme_application")
+        task.values = {
+            "full_name": "Savitri Devi",
+            "age": 72,
+            "state": "Delhi",
+            "phone": "9876543210",
+        }
+        task.reported_fields = {**{key: str(value) for key, value in task.values.items()}, "age": "73"}
+        fields = orchestrator._approval_data(task, "submit")["fields"]
+        self.assertTrue(next(field for field in fields if field["label_en"] == "Age")["mismatch"])

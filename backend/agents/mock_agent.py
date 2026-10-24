@@ -1,7 +1,7 @@
 import asyncio
 from uuid import uuid4
 
-from .base import BrowserAgent, RunResult
+from .base import BrowserAgent, CancelResult, RunResult
 
 
 class MockBrowserAgent(BrowserAgent):
@@ -30,5 +30,6 @@ class MockBrowserAgent(BrowserAgent):
             },
         )
 
-    async def cancel(self, run_id: str) -> None:
+    async def cancel(self, run_id: str) -> CancelResult:
         self._cancelled.add(run_id)
+        return CancelResult("CANCELLED", "mock run cancelled")
