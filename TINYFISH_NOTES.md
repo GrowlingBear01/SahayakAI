@@ -11,8 +11,9 @@ are recorded. The demo values used in the runs were invented.
 - Dummy-site exposure: temporary Cloudflare Quick Tunnel to port `8001`
 - Dummy form URL: `MOCK_SITE_BASE_URL/mock/form`
 - Wallet before smoke runs: `$38.520`
-- Wallet after smoke runs: `$37.976`
-- Observed spend across smoke and cancellation runs: approximately `$0.544`
+- Wallet after initial smoke runs: `$37.976`
+- Wallet after follow-up checks: `$37.896`
+- Observed spend across all M0 checks: approximately `$0.624`
 - Initial wallet rate: `$0.016` per agent step and `$0.002` per browser minute
 
 ## Required observations
@@ -36,16 +37,18 @@ are recorded. The demo values used in the runs were invented.
    under `result`.
 7. **myScheme:** Anonymous access worked in the tested English flow. The run
    returned 10 scheme records and no problems after 19 steps. No CAPTCHA, OTP,
-   or login appeared in this run. Hindi-vs-English reliability and multiple
-   spaced success runs remain untested. Go/no-go: **GO for a guarded,
-   read-only demo only**, with human handoff on CAPTCHA/login/OTP.
+   or login appeared in this run. A second English run and a Hindi-language
+   attempt both exceeded the 120-second watchdog and were authoritatively
+   cancelled with zero completed steps. Go/no-go: **GO for a guarded,
+   read-only demo only**, with the first run as the evidence; do not depend on
+   repeated or Hindi myScheme success on stage.
 8. **Cost:** The observed wallet delta was approximately `$0.544` for the
    smoke and cancellation runs. Recheck the wallet before rehearsals and M10.
-9. **Missing/slow page behavior:** A dedicated missing-field run was not
-   performed. The 120-second watchdog path was exercised against myScheme; the
-   cancel request raced with completion and returned `COMPLETED` while the
-   previous poll was stale. The adapter must re-fetch after cancellation and
-   report the authoritative terminal status.
+9. **Missing/slow page behavior:** The missing-phone run completed in 32.5
+   seconds, left the phone field empty, returned a clear problem, and did not
+   submit. A slow-page watchdog run was cancelled after 60 seconds and the
+   authoritative final status was `CANCELLED`. The adapter must re-fetch after
+   cancellation because the previous poll can be stale.
 
 ## Cancellation checks
 
@@ -53,6 +56,8 @@ are recorded. The demo values used in the runs were invented.
 - myScheme: cancel response `CANCELLED`; final run status `CANCELLED`.
 - A separate myScheme watchdog race returned `COMPLETED` from the cancel
   endpoint, demonstrating that cancellation is a request, not a guarantee.
+- The two follow-up myScheme runs returned `CANCELLED` after authoritative
+  re-fetches; both initially appeared as stale `RUNNING` responses.
 
 ## Phase-two demo submission
 
@@ -63,9 +68,15 @@ are recorded. The demo values used in the runs were invented.
   `DEMO-D2D652C6`.
 - No retry was performed.
 
+## Follow-up results
+
+- The native `select` control remains untested; the demo form currently uses a
+  text input for state.
+- Hindi myScheme reliability is not demonstrated. Keep myScheme optional and
+  lead with the demo form if it is unstable.
+
 ## Follow-up before relying on myScheme
 
-- Run a second, spaced myScheme discovery test.
-- Test the Hindi UI only if the smoke test can select it without guessing
-  fields.
-- Add a deliberate missing-field/slow-page test to the adapter test plan.
+- Keep the first successful myScheme run as the only evidence for the guarded
+  discovery path.
+- Treat Hindi myScheme as unsupported until a stable run is observed.
