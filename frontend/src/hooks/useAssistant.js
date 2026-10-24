@@ -299,7 +299,6 @@ export function useAssistant() {
       const usedId = approval.approval_id;
       try {
         await api.approve(taskId, usedId, edits);
-        setApproval(null);
         approvalLock.current = null;
         const snapshot = await api.getTask(taskId);
         setTask(snapshot);
