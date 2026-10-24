@@ -58,9 +58,19 @@ The initial health endpoint is available at:
 
 `http://127.0.0.1:8000/health`
 
-### 2. Start the frontend
+### 2. Start the separate demo site
 
-Open a second terminal:
+Open another terminal from the repository root:
+
+```powershell
+python -m uvicorn mock_site.app:app --host 127.0.0.1 --port 8001
+```
+
+The demo form is available at `http://127.0.0.1:8001/mock/form`.
+
+### 3. Start the frontend
+
+Open another terminal:
 
 ```powershell
 cd frontend
@@ -70,7 +80,13 @@ npm run dev
 
 Vite will print the local address for the frontend.
 
-### 3. Configure environment variables
+Run the backend and mock-site tests from the repository root:
+
+```powershell
+python -m unittest backend.tests.test_api mock_site.tests.test_store -v
+```
+
+### 4. Configure environment variables
 
 Copy `.env.example` to `.env` when needed and add your local configuration. Keep API keys in `.env`; never commit secrets to GitHub.
 

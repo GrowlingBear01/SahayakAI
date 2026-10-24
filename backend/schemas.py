@@ -1,4 +1,5 @@
 from enum import StrEnum
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -87,4 +88,42 @@ class Task(BaseModel):
     missing: list[str] = Field(default_factory=list)
     cancelled: bool = False
     approval_id: str | None = None
+    approval_type: Literal["start", "submit"] | None = None
+    text: str = ""
+    language: Literal["hi", "en", "auto"] = "auto"
+    reported_fields: dict[str, str] | None = None
+    evidence: dict[str, Any] | None = None
+    error: str | None = None
 
+
+class CreateTaskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1000)
+    lang: Literal["hi", "en", "auto"] = "auto"
+
+
+class AnswerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class ApproveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approval_id: str = Field(min_length=1, max_length=100)
+    edits: dict[str, str | int] | None = None
+
+
+class TaskEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    ts: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    state: TaskState
+    message_en: str
+    message_hi: str
+    step: int
+    total_steps: int
+    data: dict[str, Any] = Field(default_factory=dict)
