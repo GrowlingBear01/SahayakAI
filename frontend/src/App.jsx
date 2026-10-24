@@ -135,8 +135,14 @@ export default function App() {
             onApprove={() => assistant.approve(null)}
             onEdit={(edits) => assistant.approve(edits)}
             onCancel={assistant.cancelApproval}
+            onSwitchToFlow={assistant.setFlow}
           />
-          <ResultCard language={language} result={assistant.result} flow={flow} />
+          <ResultCard
+            language={language}
+            result={assistant.result}
+            flow={flow}
+            onSwitchToDemo={() => assistant.setFlow("demo")}
+          />
         </aside>
       </div>
 
