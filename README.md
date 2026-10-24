@@ -1,131 +1,66 @@
 # SahayakAI
 
-> **Capable enough to help. Honest enough to trust.**
+SahayakAI is a hackathon project we're building to make web forms and public-service websites easier to use, especially for people who prefer Hindi or have difficulty navigating websites.
 
-SahayakAI is a voice-first assistant designed to help Hindi-first, low-digital-literacy
-users complete web tasks without giving up control. It explains what it will do,
-asks for approval before acting, stops when asked, and never claims success without
-evidence.
+The idea is simple: users should be able to explain what they need in Hindi or English, review the information before the assistant enters it, and approve an action before anything is submitted. The assistant should also be able to stop when asked and report what actually happened.
 
-## Why this matters
+## What we're building
 
-Government and public-service websites can be difficult to navigate even when the
-user knows exactly what they need. SahayakAI is designed around a simple promise:
+The prototype has two planned workflows:
 
-> A user should not have to choose between getting help and staying in control.
+- **myScheme discovery:** Help users find potentially relevant government schemes using information from the official website. This workflow will be read-only and will never submit an application to a real government website.
+- **Demo application form:** Use a separate test website with fake information to demonstrate filling out a form and submitting it only after the user gives explicit approval.
 
-The product is built for a persona like **Savitri, 72**, who can describe her need
-in Hindi but may find forms, unfamiliar terminology, and multi-step websites
-challenging.
+The myScheme workflow will be included in the demo only if it proves reliable during testing. Otherwise, we'll focus on the demo form.
 
-## What the hackathon demo will show
+## Current status
 
-The demo has two deliberately separated flows:
+This repository is at the initial application-scaffold stage.
 
-1. **myScheme discovery** — a read-only search for possible government schemes,
-   using only information shown on the official site. It never submits an
-   application on a real website.
-2. **Demo form submission** — a clearly labelled fake form where TinyFish fills
-   invented user details. Submission requires a second, explicit approval and is
-   accepted only when the demo server verifies its own submission record.
+**Implemented so far**
+- A basic FastAPI backend with a health endpoint.
+- A React application using Vite.
+- Initial dependency definitions and an environment-variable template.
 
-The primary interaction is voice-first Hindi (`hi-IN`) with English (`en-IN`) and
-typed input always available as a fallback.
+**Still to be implemented**
+- TinyFish browser automation.
+- The demo website and its submission verification.
+- Task planning and orchestration.
+- Approval controls, progress updates, and STOP handling.
+- Hindi and English voice interaction.
 
-## Trust and safety by design
+This list will be updated as the features are implemented and tested.
 
-- **Approval before action:** the user sees the exact details and destination
-  before anything is sent to the cloud browser or typed into a site.
-- **Two approval boundaries:** filling a submission form and submitting it are
-  separate actions requiring separate approvals.
-- **STOP is always available:** stopping a task sets a cancellation flag and
-  requests cancellation from the browser agent. In-flight outcomes are reported
-  honestly.
-- **Evidence-based results:** a completed browser run is not treated as proof of
-  success. Demo submissions are verified against the server's record.
-- **No bypassing:** CAPTCHA, OTP, login, or unexpected sensitive-data requests
-  result in a human handoff. SahayakAI never attempts to bypass them.
-- **Fake data only:** the demo uses invented names, ages, and phone numbers.
-  Secrets are read from environment variables and are never committed.
-- **Restricted boundaries:** the planner cannot provide arbitrary URLs or browser
-  goals; flows and fields are validated by the backend.
+## Tech stack
 
-## Architecture
-
-```text
-React + Vite UI
-  |  REST actions + Server-Sent Events
-  v
-FastAPI backend
-  Planner -> Orchestrator state machine -> Verifier
-                    |
-                    v
-             BrowserAgent adapter
-                    |
-                    v
-             TinyFish cloud browser
-              /                 \
-       myScheme (read-only)   public demo form
-```
-
-The orchestrator owns task state and emits an event for every transition. The
-planned state machine includes `planning`, `needs_info`, `working`,
-`waiting_for_approval`, `submitting`, `done`, `could_not_finish`, `stopped`, and
-`outcome_unknown`.
-
-## Current repository status
-
-The repository currently contains the initial application scaffold:
-
-- FastAPI backend with a health endpoint
-- React/Vite frontend shell
-- Environment-variable template
-- Dependency manifests with pinned initial versions
-- Repository safety defaults in `.gitignore`
-
-The remaining demo milestones are being built incrementally: flow schemas and
-task state, the mock browser agent, orchestration and SSE, the TinyFish adapter,
-server-authoritative demo verification, planner validation, voice interaction,
-and failure-path hardening.
-
-## Project structure
-
-```text
-.
-├── backend/
-│   ├── main.py              # FastAPI application entry point
-│   ├── requirements.txt     # Backend dependencies
-│   └── __init__.py
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx          # Frontend entry screen
-│   │   └── main.jsx         # React bootstrap
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.js
-├── .env.example             # Configuration template; no secrets
-└── README.md
-```
+- **Frontend:** React and Vite
+- **Backend:** Python and FastAPI
+- **Browser automation:** TinyFish Agent API
+- **Validation:** Pydantic
+- **Demo submission records:** SQLite
 
 ## Run locally
 
-### Backend
+You'll need Python, Node.js, and npm installed.
 
-From the repository root:
+### 1. Start the backend
+
+From the repository root, run these commands in PowerShell:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r backend\requirements.txt
+python -m pip install -r backend\requirements.txt
 python -m uvicorn backend.main:app --reload
 ```
 
-The initial health check is available at
-`http://127.0.0.1:8000/health`.
+The initial health endpoint is available at:
 
-### Frontend
+`http://127.0.0.1:8000/health`
 
-In a second terminal:
+### 2. Start the frontend
+
+Open a second terminal:
 
 ```powershell
 cd frontend
@@ -133,21 +68,27 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env` when configuring local development. Never commit
-`.env` or any API key.
+Vite will print the local address for the frontend.
 
-## Team ownership
+### 3. Configure environment variables
 
-- **Owner A:** backend, TinyFish integration, planner, orchestrator, verifier, and
-  safety boundaries.
-- **Owner B:** frontend, voice interaction, accessibility, demo assets, and pitch.
+Copy `.env.example` to `.env` when needed and add your local configuration. Keep API keys in `.env`; never commit secrets to GitHub.
 
-The work is organized as small, reviewable milestones so `main` remains
-demo-ready throughout the hackathon.
+The TinyFish smoke test will also require a valid API key and a public HTTPS URL for the demo website.
 
-## Roadmap beyond the hackathon
+## Team responsibilities
 
-The current scope intentionally does not include accounts, persistent profiles,
-general "any website" automation, mobile apps, payments, hands-free wake-word
-operation, audit history, or real submissions on real government sites. These are
-future roadmap items, not hidden demo capabilities.
+- **Owner A:** Backend, TinyFish integration, orchestration, planning, and verification.
+- **Owner B:** Frontend, voice interaction, accessibility, and demo presentation.
+
+We'll build the application in small milestones and test each part before integrating it.
+
+## Safety rules
+
+- Use fake information in the demo.
+- Ask for approval before consequential actions.
+- Never submit an application on a real government website.
+- Stop at CAPTCHA, OTP, or login requirements rather than trying to bypass them.
+- Don't report success unless the available evidence supports it.
+
+More details about the architecture, API contract, and implementation requirements are maintained in `SPEC.md`.
