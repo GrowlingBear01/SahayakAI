@@ -1,19 +1,22 @@
 :root {
-  --bg: #101322;
-  --bg-elevated: #191d30;
-  --bg-glass: rgba(25, 29, 48, 0.72);
-  --text: #f5f6fc;
-  --muted: #a7adc2;
-  --indigo: #7775ff;
-  --cyan: #59d8f5;
-  --success: #35c98a;
-  --warning: #f3b85a;
-  --danger: #ff626e;
-  --border: rgba(245, 246, 252, 0.08);
-  --shadow: 0 24px 80px rgba(5, 8, 20, 0.45);
-  --radius: 24px;
+  color-scheme: light;
+  --paper: #e8edf0;
+  --paper-deep: #dce4e9;
+  --surface: #f9fbfc;
+  --surface-muted: #e1e8ed;
+  --ink: #202a32;
+  --muted: #647583;
+  --accent: #e44732;
+  --accent-dark: #c93826;
+  --green: #315b46;
+  --warning: #9b5c23;
+  --danger: #b7473e;
+  --border: #c3d0d8;
+  --shadow: 0 14px 38px rgba(35, 52, 63, 0.07);
+  --radius: 3px;
   --font: "Plus Jakarta Sans", "Noto Sans Devanagari", system-ui, sans-serif;
-  --focus: 0 0 0 3px rgba(89, 216, 245, 0.55);
+  --display: "Plus Jakarta Sans", "Noto Sans Devanagari", system-ui, sans-serif;
+  --focus: 0 0 0 3px rgba(228, 71, 50, 0.26);
 }
 
 *,
@@ -30,21 +33,18 @@ body,
 
 body {
   margin: 0;
+  color: var(--ink);
+  background: var(--paper);
   font-family: var(--font);
-  color: var(--text);
-  background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(119, 117, 255, 0.18), transparent 55%),
-    radial-gradient(900px 500px at 0% 100%, rgba(89, 216, 245, 0.1), transparent 50%),
-    var(--bg);
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 button,
 input,
 select,
 textarea {
-  font: inherit;
   color: inherit;
+  font: inherit;
 }
 
 button {
@@ -68,10 +68,12 @@ button {
 }
 
 .app-shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
-  padding: 20px 24px 32px;
-  max-width: 1440px;
+  max-width: 1920px;
   margin: 0 auto;
+  background: var(--paper);
 }
 
 .live-region {
@@ -82,23 +84,53 @@ button {
   clip: rect(0, 0, 0, 0);
 }
 
-.app-grid {
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 28px 20px 18px;
+  background: #dce4e9;
+  border-right: 1px solid #becbd3;
+}
+
+.main-area {
+  min-width: 0;
+}
+
+.studio-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
-  gap: 20px;
-  align-items: start;
+  grid-template-columns: minmax(360px, 0.86fr) minmax(420px, 1.14fr);
+  gap: 28px;
+  padding: 28px 32px;
+  align-items: stretch;
 }
 
 .panel {
-  background: var(--bg-glass);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
 }
 
 .muted {
   color: var(--muted);
+}
+
+.backend-notice {
+  margin: 18px 32px 0;
+}
+
+.supplemental-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 0 32px 25px;
+}
+
+.supplemental-grid:empty {
+  display: none;
 }
 
 .stack {
@@ -107,13 +139,74 @@ button {
   gap: 12px;
 }
 
-@media (max-width: 960px) {
+.fullscreen-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  background: rgba(24, 34, 41, 0.72);
+}
+
+.has-expanded-voice {
+  overflow: hidden;
+}
+
+@media (max-width: 1180px) {
   .app-shell {
-    padding: 16px;
+    grid-template-columns: 210px minmax(0, 1fr);
   }
 
-  .app-grid {
+  .studio-grid {
+    grid-template-columns: minmax(300px, 0.85fr) minmax(360px, 1.15fr);
+    gap: 18px;
+    padding: 22px;
+  }
+
+  .supplemental-grid {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: relative;
+    min-height: auto;
+    padding: 14px 20px;
+    border-right: 0;
+    border-bottom: 1px solid #becbd3;
+  }
+
+  .sidebar-section-label,
+  .sidebar-current,
+  .sidebar-foot {
+    display: none;
+  }
+
+  .brand {
+    margin-bottom: 12px;
+  }
+
+  .new-conversation {
+    align-self: flex-start;
+  }
+
+  .studio-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .studio-grid {
+    padding: 14px 12px;
+  }
+
+  .supplemental-grid {
+    grid-template-columns: 1fr;
+    padding: 0 12px 18px;
   }
 }
 

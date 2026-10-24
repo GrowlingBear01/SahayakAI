@@ -7,6 +7,7 @@ export default function Composer({
   onSubmit,
   disabled,
   onSuggestion,
+  inputRef,
 }) {
   return (
     <form
@@ -18,6 +19,7 @@ export default function Composer({
     >
       <div className="composer-row">
         <input
+          ref={inputRef}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={t("typedPlaceholder", language)}
