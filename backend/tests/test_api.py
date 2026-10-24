@@ -71,6 +71,23 @@ class ApiTests(unittest.TestCase):
         flow_ids = {flow["id"] for flow in flows.json()}
         self.assertIn("mock_scheme_application", flow_ids)
         self.assertIn("myscheme_discovery", flow_ids)
+        self.assertIn("web_discovery", flow_ids)
+
+    def test_web_flow_selection_is_preserved_for_site_discovery(self) -> None:
+        created = self.client.post(
+            "/tasks",
+            json={
+                "text": "National Scholarship Portal",
+                "lang": "en",
+                "flow": "web",
+            },
+        )
+        self.assertEqual(created.status_code, 200)
+        task = self.wait_for_planner(created.json()["task_id"])
+        self.assertEqual(task["requested_flow"], "web")
+        self.assertEqual(task["flow_id"], "web_discovery")
+        self.assertEqual(task["state"], "needs_info")
+        self.assertEqual(task["web_phase"], "site_name")
 
 
     def test_task_reaches_done_through_two_approvals(self) -> None:

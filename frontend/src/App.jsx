@@ -9,6 +9,7 @@ import Toast from "./components/Toast.jsx";
 import Transcript from "./components/Transcript.jsx";
 import VoiceControls from "./components/VoiceControls.jsx";
 import VoiceOrb from "./components/VoiceOrb.jsx";
+import WebsiteChoiceCard from "./components/WebsiteChoiceCard.jsx";
 import { useAssistant } from "./hooks/useAssistant.js";
 import { browserPrefersHindi, isActiveTask, t } from "./utils/messages.js";
 
@@ -31,6 +32,22 @@ export default function App() {
   } = assistant;
   const taskActive = isActiveTask(taskState);
   const autoHint = browserPrefersHindi() ? "autoLangHi" : "autoLangEn";
+  const webEventData =
+    assistant.lastEvent?.task_id === assistant.taskId
+      ? assistant.lastEvent.data || {}
+      : {};
+  const webCandidates =
+    webEventData.candidates ||
+    (assistant.task?.web_candidates || []).map((candidate, index) => ({
+      id: String(index + 1),
+      ...candidate,
+    }));
+  const selectedWebsite =
+    webEventData.selected_site ||
+    webCandidates.find(
+      (candidate) => candidate.url === assistant.task?.selected_site_url,
+    );
+  const webPhase = webEventData.web_phase || assistant.task?.web_phase;
 
   return (
     <div className="app-shell">
@@ -82,6 +99,11 @@ export default function App() {
             assistantText={assistant.assistantText}
             listening={voice.listening}
           />
+          {assistant.voiceDraftPending ? (
+            <p className="notice" role="status">
+              {t("voiceReviewRequest", language)}
+            </p>
+          ) : null}
 
           <VoiceControls
             language={language}
@@ -106,7 +128,12 @@ export default function App() {
               assistant.setFlow(item.flow);
               assistant.setTyped(item.text[language === "hi" ? "hi" : "en"]);
             }}
+            flow={flow}
+            webPhase={webPhase}
           />
+          {flow === "web" ? (
+            <p className="muted">{t("webModeNotice", language)}</p>
+          ) : null}
 
           <button type="button" className="ghost" onClick={assistant.newConversation}>
             {t("newConversation", language)}
@@ -120,6 +147,13 @@ export default function App() {
             taskState={taskState}
             progress={assistant.progress}
             onStop={assistant.stopTask}
+          />
+          <WebsiteChoiceCard
+            language={language}
+            phase={webPhase}
+            candidates={webCandidates}
+            selectedSite={selectedWebsite}
+            onSelect={assistant.startTask}
           />
           <LiveBrowserView
             language={language}

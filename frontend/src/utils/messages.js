@@ -35,6 +35,41 @@ export const copy = {
   demoForm: { en: "DEMO FORM", hi: "डेमो फ़ॉर्म" },
   discovery: { en: "Real website discovery", hi: "असली वेबसाइट खोज" },
   demo: { en: "Demo form", hi: "डेमो फ़ॉर्म" },
+  anyWebsite: { en: "Any public website", hi: "कोई भी सार्वजनिक वेबसाइट" },
+  siteNamePlaceholder: {
+    en: "Enter a website or service name",
+    hi: "वेबसाइट या सेवा का नाम लिखें",
+  },
+  websiteQuestionPlaceholder: {
+    en: "What would you like to find out on this site?",
+    hi: "इस वेबसाइट पर आप क्या जानना चाहते हैं?",
+  },
+  webModeNotice: {
+    en: "TinyFish will search for the likely official site, then read public pages only. It will not sign in, fill forms, or submit anything.",
+    hi: "TinyFish संभावित आधिकारिक वेबसाइट खोजेगा, फिर केवल सार्वजनिक पेज पढ़ेगा। यह लॉगिन, फ़ॉर्म भरना या कुछ जमा नहीं करेगा।",
+  },
+  chooseWebsite: { en: "Choose the site you mean", hi: "अपनी वेबसाइट चुनें" },
+  chooseWebsiteHelp: {
+    en: "These are possible matches, not verified official sites. Choose carefully; no candidate is opened until you select it.",
+    hi: "ये संभावित परिणाम हैं, सत्यापित आधिकारिक वेबसाइटें नहीं। सावधानी से चुनें; आपके चुनने तक कोई वेबसाइट नहीं खुलेगी।",
+  },
+  chooseThisSite: { en: "Choose this site", hi: "यह वेबसाइट चुनें" },
+  siteConfidence: { en: "Match confidence", hi: "मिलान का भरोसा" },
+  selectedWebsite: { en: "Selected likely official site", hi: "चुनी गई संभावित आधिकारिक वेबसाइट" },
+  readOnlyWebsiteNotice: {
+    en: "The next step reads public pages only. It will not sign in, fill forms, or submit anything.",
+    hi: "अगले चरण में केवल सार्वजनिक पेज पढ़े जाएंगे। लॉगिन, फ़ॉर्म भरना या कुछ जमा करना नहीं होगा।",
+  },
+  websiteResearchDisclaimer: {
+    en: "Read-only summary from the selected site. Check the cited pages, especially for time-sensitive details.",
+    hi: "चुनी हुई वेबसाइट से केवल पढ़कर दिया गया सारांश। समय-संवेदनशील जानकारी के लिए स्रोत पेज जाँचें।",
+  },
+  websiteAnswer: { en: "Information found", hi: "मिली हुई जानकारी" },
+  websiteSources: { en: "Sources on this site", hi: "इस वेबसाइट के स्रोत" },
+  websiteConfidenceCaveat: {
+    en: "The site is a likely match, not independently verified by SahayakAI.",
+    hi: "यह वेबसाइट संभावित मिलान है; SahayakAI ने इसे स्वतंत्र रूप से सत्यापित नहीं किया है।",
+  },
   livePreview: { en: "Live browser", hi: "लाइव ब्राउज़र" },
   liveBrowserAction: { en: "TinyFish is doing", hi: "TinyFish अभी कर रहा है" },
   livePreviewStarting: {
@@ -56,6 +91,10 @@ export const copy = {
   micDenied: {
     en: "Microphone permission was denied. You can still type.",
     hi: "माइक्रोफ़ोन की अनुमति नहीं मिली। आप लिखकर जारी रख सकते हैं।",
+  },
+  voiceReviewRequest: {
+    en: "Review the recognized text in the box. Tap Send, or start listening again and say “send” to continue.",
+    hi: "बॉक्स में पहचाने गए शब्द जाँचें। आगे बढ़ने के लिए भेजें दबाएँ या फिर से सुनना शुरू करके “भेजो” कहें।",
   },
   micUnsupported: {
     en: "This browser does not support speech recognition. Typed input is available.",
@@ -135,6 +174,14 @@ export const copy = {
   needsHumanBlocked: {
     en: "The website blocked automation. Please review it yourself.",
     hi: "वेबसाइट ने स्वचालित कार्रवाई रोक दी। कृपया स्वयं जाँचें।",
+  },
+  openSiteManually: {
+    en: "Open the site and continue manually",
+    hi: "वेबसाइट खोलें और स्वयं आगे बढ़ें",
+  },
+  manualHandoffLimit: {
+    en: "This opens the site in a separate tab. Your CAPTCHA response is not shared with the cloud browser, and this run cannot resume. Continue manually; only start another automated request if the site permits it.",
+    hi: "यह वेबसाइट अलग टैब में खुलेगी। CAPTCHA का उत्तर क्लाउड ब्राउज़र के साथ साझा नहीं होगा और यह कार्य फिर से शुरू नहीं किया जा सकता। स्वयं आगे बढ़ें; दूसरा स्वचालित अनुरोध तभी शुरू करें जब वेबसाइट इसकी अनुमति देती हो।",
   },
   stopTooLate: {
     en: "The submission was verified before the stop request took effect.",

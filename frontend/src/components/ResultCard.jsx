@@ -1,4 +1,5 @@
 import { t } from "../utils/messages.js";
+import { isHttpUrl } from "../utils/approval.js";
 
 const TITLES = {
   done: "done",
@@ -30,7 +31,16 @@ export default function ResultCard({ language, result, onSwitchDemo }) {
   const note =
     result.note === "stop_too_late" ? t("stopTooLate", language) : result.note;
   const isDiscovery = result.flow_id === "myscheme_discovery";
+  const isWebResearch = result.flow_id === "web_discovery";
   const schemes = Array.isArray(result.schemes) ? result.schemes : [];
+  const webSources = Array.isArray(result.web_sources) ? result.web_sources : [];
+  const selectedSite = result.selected_site;
+  let selectedHost = "";
+  try {
+    selectedHost = new URL(selectedSite?.url).hostname;
+  } catch {
+    selectedHost = "";
+  }
 
   return (
     <section className="panel card result" data-state={result.state} aria-live="polite">
@@ -38,6 +48,36 @@ export default function ResultCard({ language, result, onSwitchDemo }) {
       <p>{summary}</p>
       {note ? <p className="muted">{note}</p> : null}
       {isDiscovery ? <p className="muted">{t("discoveryDisclaimer", language)}</p> : null}
+      {isWebResearch ? (
+        <>
+          <p className="muted">{t("websiteResearchDisclaimer", language)}</p>
+          <p className="muted">{t("websiteConfidenceCaveat", language)}</p>
+          {selectedSite ? (
+            <p>
+              {selectedSite.name}
+              {selectedHost ? ` · ${selectedHost}` : ""}
+            </p>
+          ) : null}
+          {result.web_answer ? (
+            <div className="evidence">
+              <strong>{t("websiteAnswer", language)}</strong>
+              <p>{result.web_answer}</p>
+            </div>
+          ) : null}
+          {webSources.length ? (
+            <div className="scheme-results">
+              <h3>{t("websiteSources", language)}</h3>
+              {webSources.map((source) => (
+                <p key={source.url}>
+                  <a href={source.url} target="_blank" rel="noreferrer">
+                    {source.name}
+                  </a>
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
       {schemes.length ? (
         <div className="scheme-results">
           <h3>{t("schemeListings", language)}</h3>
@@ -83,9 +123,17 @@ export default function ResultCard({ language, result, onSwitchDemo }) {
           ))
         : null}
       {result.needs_human_kind ? (
-        <p className="notice">
-          {t(HUMAN_ACTION_LABEL[result.needs_human_kind] || "couldNotFinish", language)}
-        </p>
+        <div className="notice">
+          <p>{t(HUMAN_ACTION_LABEL[result.needs_human_kind] || "couldNotFinish", language)}</p>
+          {isHttpUrl(result.human_action_url) ? (
+            <p>
+              <a href={result.human_action_url} target="_blank" rel="noopener noreferrer">
+                {t("openSiteManually", language)}
+              </a>
+            </p>
+          ) : null}
+          <p>{t("manualHandoffLimit", language)}</p>
+        </div>
       ) : null}
       {result.offer_demo && onSwitchDemo ? (
         <button type="button" className="primary" onClick={onSwitchDemo}>

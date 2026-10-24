@@ -74,8 +74,8 @@ export const api = {
     return request("/flows");
   },
 
-  createTask(text, lang) {
-    return request("/tasks", { method: "POST", body: { text, lang } });
+  createTask(text, lang, flow = "auto") {
+    return request("/tasks", { method: "POST", body: { text, lang, flow } });
   },
 
   getTask(taskId) {
@@ -86,6 +86,7 @@ export const api = {
     return request(`/tasks/${encodeURIComponent(taskId)}/answer`, {
       method: "POST",
       body: { text },
+      timeoutMs: APPROVAL_TIMEOUT_MS,
     });
   },
 

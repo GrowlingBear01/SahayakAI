@@ -24,7 +24,9 @@ async def health() -> dict[str, bool]:
 
 @app.post("/tasks")
 async def create_task(request: CreateTaskRequest) -> dict[str, str]:
-    task = await orchestrator.create_task(request.text, request.lang)
+    task = await orchestrator.create_task(
+        request.text, request.lang, request.flow
+    )
     return {"task_id": task.task_id}
 
 
@@ -92,6 +94,7 @@ async def stop_task(task_id: str) -> dict[str, object]:
         raise HTTPException(status_code=404, detail="task not found") from error
     flow = orchestrator.flows.get(task.flow_id) if task.flow_id else None
     is_discovery = flow is not None and flow.flow_type == FlowType.DISCOVERY
+    is_myscheme = flow is not None and flow.id == "myscheme_discovery"
     if task.state == TaskState.SUBMITTING:
         note_en = (
             "Stop requested during submission. The backend is checking whether "
@@ -100,20 +103,30 @@ async def stop_task(task_id: str) -> dict[str, object]:
         note_hi = "जमा करते समय रोकने का अनुरोध मिला। डेमो साइट पर स्थिति जाँची जा रही है।"
     elif task.state == TaskState.DONE:
         if is_discovery:
-            note_en = "The read-only myScheme search is already complete."
-            note_hi = "myScheme पर केवल पढ़कर खोज पूरी हो चुकी है।"
+            note_en = (
+                "The read-only myScheme search is already complete."
+                if is_myscheme
+                else "The read-only website search is already complete."
+            )
+            note_hi = (
+                "myScheme पर केवल पढ़कर खोज पूरी हो चुकी है।"
+                if is_myscheme
+                else "वेबसाइट पर केवल पढ़कर खोज पूरी हो चुकी है।"
+            )
         else:
             note_en = "The demo submission was already verified."
             note_hi = "डेमो जमा होने की पुष्टि पहले ही हो चुकी है।"
     elif task.state == TaskState.OUTCOME_UNKNOWN:
         if is_discovery:
             note_en = (
-                "myScheme results could not be confirmed. You can try the demo form "
-                "instead; no application was submitted."
+                "myScheme results could not be confirmed. No application was submitted."
+                if is_myscheme
+                else "The website result could not be confirmed. No form was submitted."
             )
             note_hi = (
-                "myScheme के परिणामों की पुष्टि नहीं हो सकी। इसके बजाय डेमो फ़ॉर्म "
-                "आज़मा सकते हैं; कोई आवेदन जमा नहीं हुआ।"
+                "myScheme के परिणामों की पुष्टि नहीं हो सकी। कोई आवेदन जमा नहीं हुआ।"
+                if is_myscheme
+                else "वेबसाइट के परिणाम की पुष्टि नहीं हो सकी। कोई फ़ॉर्म जमा नहीं हुआ।"
             )
         else:
             note_en = (
@@ -133,10 +146,21 @@ async def stop_task(task_id: str) -> dict[str, object]:
         "evidence": task.evidence,
         "reason": task.reason,
         "needs_human_kind": task.needs_human_kind,
+        "human_action_url": task.human_action_url,
         "flow_id": task.flow_id,
         "schemes": [scheme.model_dump() for scheme in task.schemes],
+        "web_answer": task.web_answer,
+        "web_sources": [source.model_dump() for source in task.web_sources],
+        "selected_site": next(
+            (
+                candidate.model_dump()
+                for candidate in task.web_candidates
+                if candidate.url == task.selected_site_url
+            ),
+            None,
+        ),
         "offer_demo": (
-            is_discovery
+            is_myscheme
             and task.state
             in {TaskState.COULD_NOT_FINISH, TaskState.OUTCOME_UNKNOWN}
         ),

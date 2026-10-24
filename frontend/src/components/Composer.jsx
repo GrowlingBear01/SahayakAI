@@ -7,7 +7,15 @@ export default function Composer({
   onSubmit,
   disabled,
   onSuggestion,
+  flow,
+  webPhase,
 }) {
+  const placeholder =
+    flow === "web"
+      ? webPhase === "question"
+        ? "websiteQuestionPlaceholder"
+        : "siteNamePlaceholder"
+      : "typedPlaceholder";
   return (
     <form
       className="composer"
@@ -20,8 +28,8 @@ export default function Composer({
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder={t("typedPlaceholder", language)}
-          aria-label={t("typedPlaceholder", language)}
+          placeholder={t(placeholder, language)}
+          aria-label={t(placeholder, language)}
           disabled={disabled}
         />
         <button className="primary" type="submit" disabled={disabled || !value.trim()}>

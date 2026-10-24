@@ -470,6 +470,11 @@ class M8SafetyTests(unittest.TestCase):
     def test_human_action_returns_could_not_finish_with_kind(self) -> None:
         async def scenario() -> None:
             orchestrator = self.make_orchestrator(agent=HumanRequiredAgent())
+            orchestrator.flows["mock_scheme_application"] = (
+                orchestrator.flows["mock_scheme_application"].model_copy(
+                    update={"url": "https://demo.example/mock/form"}
+                )
+            )
             task = await orchestrator.create_task(DEMO_REQUEST, "en")
             task = await wait_for_planner(orchestrator, task.task_id)
             task = await orchestrator.approve(
@@ -480,11 +485,22 @@ class M8SafetyTests(unittest.TestCase):
             self.assertEqual(task.state, TaskState.COULD_NOT_FINISH)
             self.assertEqual(task.reason, "needs_human")
             self.assertEqual(task.needs_human_kind, "captcha")
+            self.assertEqual(
+                task.human_action_url, "https://demo.example/mock/form"
+            )
             event = orchestrator._history[task.task_id][-1]
             self.assertEqual(event.data["reason"], "needs_human")
             self.assertEqual(event.data["needs_human_kind"], "captcha")
+            self.assertEqual(
+                event.data["human_action_url"],
+                "https://demo.example/mock/form",
+            )
             snapshot = orchestrator._snapshot_event(task)
             self.assertEqual(snapshot.data["reason"], "needs_human")
             self.assertEqual(snapshot.data["needs_human_kind"], "captcha")
+            self.assertEqual(
+                snapshot.data["human_action_url"],
+                "https://demo.example/mock/form",
+            )
 
         asyncio.run(scenario())

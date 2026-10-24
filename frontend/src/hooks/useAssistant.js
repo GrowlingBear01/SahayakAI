@@ -8,6 +8,7 @@ import {
   isStopCommand,
   resolvedLang,
 } from "../utils/messages.js";
+import { isVoiceSendCommand } from "../utils/voice.js";
 import { useTaskEvents } from "./useTaskEvents.js";
 import { useVoice } from "./useVoice.js";
 
@@ -32,10 +33,14 @@ function resultFromEvent(event) {
     summary_hi: data.summary_hi || event.message_hi,
     reason: data.reason || null,
     needs_human_kind: data.needs_human_kind || null,
+    human_action_url: data.human_action_url || null,
     note: data.note || null,
     links: data.links || data.official_links || [],
     flow_id: data.flow_id || null,
     schemes: Array.isArray(data.schemes) ? data.schemes : [],
+    web_answer: data.web_answer || null,
+    web_sources: Array.isArray(data.web_sources) ? data.web_sources : [],
+    selected_site: data.selected_site || null,
     offer_demo: data.offer_demo === true,
   };
 }
@@ -63,6 +68,7 @@ export function useAssistant() {
   const [flows, setFlows] = useState([]);
   const [flowMismatch, setFlowMismatch] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
+  const [voiceDraftPending, setVoiceDraftPending] = useState(false);
   const [lastEvent, setLastEvent] = useState(null);
 
   const spokenKeys = useRef(new Set());
@@ -71,6 +77,10 @@ export function useAssistant() {
   const approvalLock = useRef(null);
   const taskIdRef = useRef(null);
   const taskStateRef = useRef(null);
+  const typedRef = useRef(typed);
+  const voiceDraftPendingRef = useRef(false);
+  const voiceDraftTextRef = useRef("");
+  const startTaskRef = useRef(async () => {});
   const flowRef = useRef(flow);
   const languageRef = useRef(language);
   const speakRef = useRef(() => {});
@@ -78,6 +88,7 @@ export function useAssistant() {
 
   taskIdRef.current = taskId;
   taskStateRef.current = taskState;
+  typedRef.current = typed;
   flowRef.current = flow;
   languageRef.current = language;
 
@@ -103,7 +114,7 @@ export function useAssistant() {
     if (event.state === "waiting_for_approval") {
       const nextApproval = approvalFromEvent(event);
       setApproval(nextApproval);
-      const selectedSite = flowRef.current === "discovery" ? "real" : "demo";
+      const selectedSite = flowRef.current === "demo" ? "demo" : "real";
       setFlowMismatch(Boolean(nextApproval?.site_kind && nextApproval.site_kind !== selectedSite));
       const fields = fieldsWithKeys(nextApproval, {});
       const readback =
@@ -135,15 +146,44 @@ export function useAssistant() {
     }
   }, []);
 
+  const updateTyped = useCallback((value) => {
+    const text = String(value ?? "");
+    typedRef.current = text;
+    setTyped(text);
+  }, []);
+
   const voice = useVoice({
     language,
     onInterim: setTranscript,
     onFinal: (text) => {
-      setTranscript(text);
-      setTyped(text);
-      if (isStopCommand(text) && taskIdRef.current && isActiveTask(taskStateRef.current)) {
-        stopTaskRef.current();
+      if (
+        voiceDraftPendingRef.current &&
+        isVoiceSendCommand(text) &&
+        typedRef.current.trim()
+      ) {
+        const request = typedRef.current.trim();
+        voiceDraftPendingRef.current = false;
+        setVoiceDraftPending(false);
+        setTranscript(voiceDraftTextRef.current);
+        startTaskRef.current(request);
+        return;
       }
+
+      setTranscript(text);
+      updateTyped(text);
+      if (isStopCommand(text) && taskIdRef.current && isActiveTask(taskStateRef.current)) {
+        voiceDraftPendingRef.current = false;
+        setVoiceDraftPending(false);
+        stopTaskRef.current();
+        return;
+      }
+      voiceDraftTextRef.current = text;
+      voiceDraftPendingRef.current = true;
+      setVoiceDraftPending(true);
+      speakRef.current(text, {
+        lang: languageRef.current,
+        key: `voice-review:${Date.now()}`,
+      });
     },
   });
 
@@ -179,7 +219,7 @@ export function useAssistant() {
       setFlowMismatch(false);
       return;
     }
-    const selectedSite = flow === "discovery" ? "real" : "demo";
+    const selectedSite = flow === "demo" ? "demo" : "real";
     setFlowMismatch(approval.site_kind !== selectedSite);
   }, [approval, flow]);
 
@@ -206,8 +246,14 @@ export function useAssistant() {
             summary_hi: snapshot.error_hi || snapshot.error || snapshot.state,
             reason: snapshot.reason || null,
             needs_human_kind: snapshot.needs_human_kind || null,
+            human_action_url: snapshot.human_action_url || null,
             flow_id: snapshot.flow_id || null,
             schemes: Array.isArray(snapshot.schemes) ? snapshot.schemes : [],
+            web_answer: snapshot.web_answer || null,
+            web_sources: Array.isArray(snapshot.web_sources)
+              ? snapshot.web_sources
+              : [],
+            selected_site: snapshot.selected_site || null,
             offer_demo:
               snapshot.flow_id === "myscheme_discovery" &&
               ["could_not_finish", "outcome_unknown"].includes(snapshot.state),
@@ -257,8 +303,14 @@ export function useAssistant() {
           "रोक दिया गया। पहले किए गए काम का असर रह सकता है।",
         reason: response.reason || null,
         needs_human_kind: response.needs_human_kind || null,
+        human_action_url: response.human_action_url || null,
         flow_id: response.flow_id || null,
         schemes: Array.isArray(response.schemes) ? response.schemes : [],
+        web_answer: response.web_answer || null,
+        web_sources: Array.isArray(response.web_sources)
+          ? response.web_sources
+          : [],
+        selected_site: response.selected_site || null,
         offer_demo: response.offer_demo === true,
         note: response.note_key || null,
       });
@@ -286,6 +338,8 @@ export function useAssistant() {
         await stopTask();
         return;
       }
+      voiceDraftPendingRef.current = false;
+      setVoiceDraftPending(false);
 
       if (taskIdRef.current && taskStateRef.current === "needs_info") {
         if (answering.current) return;
@@ -294,7 +348,7 @@ export function useAssistant() {
         try {
           await api.answer(taskIdRef.current, text);
           setUserUtterance(text);
-          setTyped("");
+          updateTyped("");
         } catch {
           setTaskState("needs_info");
           setToast({ kind: "error", messageKey: "backendDown" });
@@ -321,14 +375,18 @@ export function useAssistant() {
 
       const lang = language === "auto" ? "auto" : language;
       try {
-        const created = await api.createTask(text, lang);
+        const requestText =
+          flowRef.current === "web"
+            ? `Use the web_discovery flow. The user-provided site or service name is: ${JSON.stringify(text)}`
+            : text;
+        const created = await api.createTask(requestText, lang, flowRef.current);
         if (!created?.task_id) throw new Error("missing_task_id");
         setTaskId(created.task_id);
         setTaskState("planning");
         const snapshot = await api.getTask(created.task_id);
         setTask(snapshot);
         setTaskState(snapshot.state);
-        setTyped("");
+        updateTyped("");
       } catch (error) {
         setBusy(false);
         inFlight.current = false;
@@ -338,8 +396,9 @@ export function useAssistant() {
         setToast({ kind: "error", messageKey: "backendDown" });
       }
     },
-    [language, stopTask, typed, voice],
+    [language, stopTask, typed, updateTyped, voice],
   );
+  startTaskRef.current = startTask;
 
   const approve = useCallback(
     async (edits = null) => {
@@ -411,10 +470,13 @@ export function useAssistant() {
     setUserUtterance("");
     setAssistantText("");
     setTranscript("");
-    setTyped("");
+    updateTyped("");
+    voiceDraftPendingRef.current = false;
+    voiceDraftTextRef.current = "";
+    setVoiceDraftPending(false);
     setFlowMismatch(false);
     setToast(null);
-  }, [voice]);
+  }, [updateTyped, voice]);
 
   const orbState = useMemo(() => {
     if (voice.listening) return "listening";
@@ -464,6 +526,7 @@ export function useAssistant() {
     flows,
     flowMismatch,
     voiceError,
+    voiceDraftPending,
     lastEvent,
     voice,
     orbState,

@@ -6,9 +6,10 @@ The idea is simple: users should be able to explain what they need in Hindi or E
 
 ## What we're building
 
-The prototype has two workflows:
+The prototype has three workflows:
 
 - **myScheme discovery:** A guarded, read-only search of public myScheme pages. It does not enter personal details, submit applications, or confirm eligibility. The M0 smoke test had one successful English run; repeat and Hindi runs timed out, so treat this as optional and do not rely on it for the stage demo.
+- **Any public website:** Choose “Any public website” and enter a site or service name. Gemini's Google Search grounding API finds likely official sites without opening a search-results page in TinyFish. A single high-confidence match is shown before the app asks what to look up; ambiguous matches require the user to choose. TinyFish then reads public pages on that hostname and returns an answer with same-site source links. This is best-effort, not coverage of every website or independent verification of a site's ownership. Login, CAPTCHA, OTP, form filling, and submissions are out of scope.
 - **Demo application form:** Use a separate test website with fake information to demonstrate filling out a form and submitting it only after the user gives explicit approval.
 
 ## Current status
@@ -32,6 +33,11 @@ available as a separate adapter and must be configured explicitly.
   does not automatically retry a submission without verified status.
 - TinyFish adapter with polling, cancellation handling, screenshots, and live
   browser-view URL support.
+- Generic read-only website discovery: site-name search using Gemini's Google
+  Search grounding API, candidate selection when ambiguous, same-host source
+  filtering, and an answer backed by public page links. TinyFish browses the
+  selected site only; the deterministic mock agent does not simulate or browse
+  arbitrary websites.
 - myScheme discovery with a separate pre-run approval, page-sourced scheme
   descriptions, optional Hindi translations when returned, same-site-only links,
   and a demo-form fallback when results cannot be safely extracted.
@@ -71,16 +77,20 @@ python -m uvicorn backend.main:app --reload --env-file .env
 
 The planner uses `LLM_PROVIDER=gemini` and `LLM_MODEL=gemini-3.8-flash` by
 default. It sends requests through Gemini's stateless Interactions API and
-validates the JSON response before any task can reach approval.
+validates the JSON response before any task can reach approval. Public website
+discovery also uses Gemini's Google Search grounding tool with the same API key;
+it no longer opens a Google results page in TinyFish.
 
 The browser agent defaults to `BROWSER_AGENT=mock` for offline development.
 To run tasks with TinyFish, set `BROWSER_AGENT=tinyfish` and configure
-`TINYFISH_API_KEY` in `.env`. TinyFish must be able to reach the demo site over
-public HTTPS, so set `MOCK_SITE_BASE_URL` to the HTTPS tunnel URL for the
-separate mock-site app. Keep both processes on the same machine because they
-share the mock site's local SQLite verification database. When TinyFish is
-selected, a missing API key is a startup error; the backend will not silently
-fall back to the mock agent.
+`TINYFISH_API_KEY` in `.env`. For the demo form, TinyFish must be able to reach
+the demo site over public HTTPS, so set `MOCK_SITE_BASE_URL` to the HTTPS tunnel
+URL for the separate mock-site app. Keep both processes on the same machine
+because they share the mock site's local SQLite verification database. Generic
+website discovery also requires `BROWSER_AGENT=tinyfish`; the mock agent does
+not simulate or browse arbitrary sites. When TinyFish is selected, a missing
+API key is a startup error; the backend will not silently fall back to the mock
+agent.
 
 The backend API docs and health endpoint are available at:
 
@@ -113,7 +123,8 @@ Vite will print the local address for the frontend.
 Run the backend and mock-site tests from the repository root:
 
 ```powershell
-python -m unittest backend.tests.test_api backend.tests.test_agent_factory backend.tests.test_m4_runtime backend.tests.test_tinyfish_agent backend.tests.test_planner backend.tests.test_m5_verification backend.tests.test_m6_planner mock_site.tests.test_store mock_site.tests.test_app -v
+python -m unittest discover -s backend/tests -v
+python -m unittest discover -s mock_site/tests -v
 ```
 
 Run frontend tests and a production build from `frontend`:
@@ -161,6 +172,8 @@ We'll build the application in small milestones and test each part before integr
 - Ask for approval before consequential actions.
 - Never submit an application on a real government website.
 - Stop at CAPTCHA, OTP, or login requirements rather than trying to bypass them.
+  When available, the app links to the site so the user can continue manually;
+  completing a challenge in that separate tab does not resume the cloud run.
 - Don't report success unless the available evidence supports it.
 
 More details about the architecture, API contract, and implementation requirements are maintained in `SPEC.md`.

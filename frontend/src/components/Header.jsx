@@ -32,6 +32,7 @@ export default function Header({ language, onLanguage, flow, onFlow }) {
           >
             <option value="demo">{t("demo", language)}</option>
             <option value="discovery">{t("discovery", language)}</option>
+            <option value="web">{t("anyWebsite", language)}</option>
           </select>
         </label>
         <span

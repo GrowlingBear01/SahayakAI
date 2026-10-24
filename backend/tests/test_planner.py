@@ -59,6 +59,8 @@ class PlannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["response_format"]["mime_type"], "application/json")
         self.assertFalse(body["store"])
         self.assertIn("Never guess", body["input"])
+        self.assertIn("web_discovery", body["input"])
+        self.assertIn("never invent a URL", body["input"])
         self.assertNotIn("test-key", str(requests[0].url))
 
     async def test_invalid_json_is_retried_once(self) -> None:

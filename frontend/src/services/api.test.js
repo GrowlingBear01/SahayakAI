@@ -20,11 +20,15 @@ describe("api contract", () => {
     expect(isHealthy({ ok: false })).toBe(false);
   });
 
-  it("POSTs { text, lang } to /tasks", async () => {
+  it("POSTs { text, lang, flow } to /tasks", async () => {
     globalThis.fetch = vi.fn(async (url, options) => {
       expect(String(url)).toMatch(/\/tasks$/);
       expect(options.method).toBe("POST");
-      expect(JSON.parse(options.body)).toEqual({ text: "Fill the demo form", lang: "en" });
+      expect(JSON.parse(options.body)).toEqual({
+        text: "Fill the demo form",
+        lang: "en",
+        flow: "auto",
+      });
       return new Response(JSON.stringify({ task_id: "t1" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -32,6 +36,18 @@ describe("api contract", () => {
     });
     const result = await api.createTask("Fill the demo form", "en");
     expect(result).toEqual({ task_id: "t1" });
+  });
+
+  it("sends the selected public website mode", async () => {
+    globalThis.fetch = vi.fn(async (_url, options) => {
+      expect(JSON.parse(options.body)).toEqual({
+        text: "National Scholarship Portal",
+        lang: "en",
+        flow: "web",
+      });
+      return new Response(JSON.stringify({ task_id: "t2" }), { status: 200 });
+    });
+    await api.createTask("National Scholarship Portal", "en", "web");
   });
 
   it("sends approval_id and edits exactly", async () => {
