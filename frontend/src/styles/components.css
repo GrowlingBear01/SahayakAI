@@ -360,6 +360,52 @@
 .wave span:nth-child(4) { animation-delay: 0.36s; }
 .wave span:nth-child(5) { animation-delay: 0.48s; }
 
+.orb .orb-wave {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 0.8vw, 8px);
+  height: auto;
+  margin: 0;
+}
+
+.orb-wave span {
+  width: clamp(4px, 0.7vw, 7px);
+  height: 19%;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 7px rgba(25, 39, 103, 0.2);
+  animation: orb-wave 850ms ease-in-out infinite;
+}
+
+.orb-wave span:nth-child(2),
+.orb-wave span:nth-child(6) {
+  height: 31%;
+  animation-delay: 100ms;
+}
+
+.orb-wave span:nth-child(3),
+.orb-wave span:nth-child(5) {
+  height: 45%;
+  animation-delay: 200ms;
+}
+
+.orb-wave span:nth-child(4) {
+  height: 58%;
+  animation-delay: 300ms;
+}
+
+.orb.listening .orb-wave span {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.orb.speaking .orb-wave span {
+  background: #fff3e9;
+}
+
 .language-control {
   margin-top: auto;
 }
@@ -378,9 +424,26 @@
   min-height: 35px;
   padding: 0 13px;
   border: 1px solid #bbc9d2;
-  background: rgba(255, 255, 255, 0.55);
+  background: #d5dfe5;
+  color: #283741;
   font-size: 0.77rem;
   font-weight: 700;
+}
+
+.suggestions[role="group"] button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.suggestions[role="group"] button.ghost {
+  border-color: #afbec8;
+  background: #d5dfe5;
+  color: #283741;
+}
+
+.suggestions[role="group"] button.ghost:hover:not(:disabled) {
+  background: #c8d5dd;
 }
 
 .stage > .muted {
@@ -437,12 +500,20 @@
 .ghost,
 .icon-btn {
   border: 1px solid #b8c7d0;
-  background: var(--surface);
+  background: #dce5ea;
+  color: #283741;
 }
 
 .ghost:hover:not(:disabled),
 .icon-btn:hover:not(:disabled) {
-  background: white;
+  background: #cbd8df;
+}
+
+.voice-bar .ghost:disabled {
+  border-color: #c2cdd3;
+  background: #e1e8ec;
+  color: #667781;
+  opacity: 1;
 }
 
 .danger {
@@ -939,6 +1010,18 @@
 
 @keyframes orb-pulse {
   50% { transform: scale(1.025); }
+}
+
+@keyframes orb-wave {
+  0%,
+  100% {
+    transform: scaleY(0.52);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 1180px) {

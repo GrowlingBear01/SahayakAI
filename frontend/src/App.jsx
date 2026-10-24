@@ -107,15 +107,6 @@ export default function App() {
         <span className={`status-dot ${assistant.orbState}`} />
         {statusLabel(assistant)}
       </p>
-      {voice.listening || voice.speaking ? (
-        <div className="wave" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
-      ) : null}
       <VoiceOrb state={assistant.orbState} />
       <div className="language-control">
         <p className="eyebrow language-label">{t("language", language)}</p>
