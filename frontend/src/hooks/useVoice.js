@@ -11,13 +11,14 @@ function pickVoice(voices, lang) {
   const prefix = locale.slice(0, 2);
   const named = voices.filter((voice) => voice.lang?.toLowerCase().startsWith(prefix));
   const preferred = named.find((voice) => voice.lang?.toLowerCase() === locale);
-  return preferred || named[0] || voices[0] || null;
+  return preferred || named[0] || null;
 }
 
 export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voices, setVoices] = useState([]);
+  const [error, setError] = useState(null);
   const [support, setSupport] = useState({
     recognition: false,
     speech: false,
@@ -25,6 +26,8 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
   });
 
   const recognitionRef = useRef(null);
+  const listeningAttemptRef = useRef(0);
+  const mountedRef = useRef(true);
   const lastSpokenRef = useRef("");
   const onFinalRef = useRef(onFinal);
   const onInterimRef = useRef(onInterim);
@@ -50,13 +53,25 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
   }, []);
 
   const speak = useCallback(
-    (text, { lang, key } = {}) => {
+    (text, { lang, key, fallbackText } = {}) => {
       if (!text || typeof window === "undefined" || !window.speechSynthesis) return false;
       if (key && lastSpokenRef.current === key) return false;
-      const utterance = new SpeechSynthesisUtterance(text);
-      const resolved = resolvedLang(lang || language);
+      let utteranceText = text;
+      let resolved = resolvedLang(lang || language);
+      let voice = pickVoice(voices, resolved);
+
+      if (resolved === "hi" && voices.length > 0 && !voice) {
+        if (!fallbackText) return false;
+        utteranceText = fallbackText;
+        resolved = "en";
+        voice = pickVoice(voices, resolved);
+        if (!voice) return false;
+      } else if (!voice && resolved === "en") {
+        voice = voices[0] || null;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(utteranceText);
       utterance.lang = recognitionLocale(resolved);
-      const voice = pickVoice(voices, resolved);
       if (voice) utterance.voice = voice;
       utterance.onend = () => setSpeaking(false);
       utterance.onerror = () => setSpeaking(false);
@@ -70,15 +85,15 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
   );
 
   const stopListening = useCallback(() => {
+    listeningAttemptRef.current += 1;
     const recognition = recognitionRef.current;
     if (recognition) {
       try {
         recognition.stop();
       } catch {
-        /* already stopped */
+        recognitionRef.current = null;
       }
     }
-    recognitionRef.current = null;
     setListening(false);
   }, []);
 
@@ -92,16 +107,23 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
 
     stopSpeech();
     stopListening();
+    setError(null);
+    const attempt = ++listeningAttemptRef.current;
 
     if (navigator.permissions?.query) {
       try {
         const status = await navigator.permissions.query({ name: "microphone" });
         setSupport((current) => ({ ...current, permission: status.state }));
-        if (status.state === "denied") return;
+        if (attempt !== listeningAttemptRef.current) return;
+        if (status.state === "denied") {
+          setError("micDenied");
+          return;
+        }
       } catch {
         /* Safari and some Chromium builds omit microphone from permissions */
       }
     }
+    if (attempt !== listeningAttemptRef.current || !enabled) return;
 
     const recognition = new Ctor();
     recognition.lang = recognitionLocale(language);
@@ -109,20 +131,37 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
     recognition.continuous = false;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => setListening(true);
+    recognition.onstart = () => {
+      if (mountedRef.current && recognitionRef.current === recognition) setListening(true);
+    };
     recognition.onend = () => {
-      setListening(false);
-      recognitionRef.current = null;
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
+        if (mountedRef.current) setListening(false);
+      }
     };
     recognition.onerror = (event) => {
+      if (!mountedRef.current || recognitionRef.current !== recognition) return;
       const err = event?.error;
       if (err === "not-allowed") {
         setSupport((current) => ({ ...current, permission: "denied" }));
+        setError("micDenied");
+      } else if (err === "audio-capture") {
+        setError("micUnavailable");
+      } else if (err === "network") {
+        setError("speechNetwork");
+      } else if (err === "no-speech") {
+        setError("speechNoSpeech");
+      } else if (err !== "aborted") {
+        setError("speechRecognitionFailed");
       }
-      setListening(false);
-      recognitionRef.current = null;
+      if (recognitionRef.current === recognition) {
+        setListening(false);
+        recognitionRef.current = null;
+      }
     };
     recognition.onresult = (event) => {
+      if (!mountedRef.current || recognitionRef.current !== recognition) return;
       let interim = "";
       let finalText = "";
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -140,20 +179,24 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
       recognition.start();
     } catch {
       setListening(false);
+      recognitionRef.current = null;
+      setError("speechRecognitionFailed");
     }
   }, [enabled, language, stopListening, stopSpeech]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
       stopListening();
       stopSpeech();
-    },
-    [stopListening, stopSpeech],
-  );
+    };
+  }, [stopListening, stopSpeech]);
 
   return {
     listening,
     speaking,
+    error,
     support,
     voices,
     startListening,

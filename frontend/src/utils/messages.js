@@ -20,6 +20,7 @@ export const copy = {
   send: { en: "Send", hi: "भेजें" },
   startListening: { en: "Start listening", hi: "सुनना शुरू करें" },
   stopListening: { en: "Stop listening", hi: "सुनना बंद करें" },
+  pushToTalk: { en: "Hold to speak", hi: "बोलने के लिए दबाकर रखें" },
   interrupt: { en: "Interrupt speech", hi: "आवाज़ रोकें" },
   replay: { en: "Replay answer", hi: "उत्तर दोबारा सुनें" },
   mute: { en: "Stop speech", hi: "आवाज़ बंद करें" },
@@ -51,6 +52,22 @@ export const copy = {
   micDenied: {
     en: "Microphone permission was denied. You can still type.",
     hi: "माइक्रोफ़ोन की अनुमति नहीं मिली। आप लिखकर जारी रख सकते हैं।",
+  },
+  micUnavailable: {
+    en: "No microphone is available. You can still type.",
+    hi: "माइक्रोफ़ोन उपलब्ध नहीं है। आप लिखकर जारी रख सकते हैं।",
+  },
+  speechNoSpeech: {
+    en: "I did not hear speech. Hold the microphone and try again, or type your request.",
+    hi: "आवाज़ सुनाई नहीं दी। माइक्रोफ़ोन दबाकर फिर कोशिश करें, या अनुरोध लिखें।",
+  },
+  speechNetwork: {
+    en: "Speech recognition needs a working network connection. You can still type.",
+    hi: "आवाज़ पहचान के लिए नेटवर्क कनेक्शन चाहिए। आप लिखकर जारी रख सकते हैं।",
+  },
+  speechRecognitionFailed: {
+    en: "Speech recognition could not start. You can still type.",
+    hi: "आवाज़ पहचान शुरू नहीं हो सकी। आप लिखकर जारी रख सकते हैं।",
   },
   micUnsupported: {
     en: "This browser does not support speech recognition. Typed input is available.",
@@ -161,7 +178,9 @@ export function eventMessage(event, lang) {
 export function isStopCommand(text) {
   const value = String(text || "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[.,!?;:।॥]+$/u, "")
+    .trim();
   if (!value) return false;
   const commands = ["stop", "ruko", "ruk jao", "ruk ja", "रुक", "रुको", "रुक जाओ", "रुक जा"];
   return commands.some((cmd) => value === cmd || value.startsWith(`${cmd} `));

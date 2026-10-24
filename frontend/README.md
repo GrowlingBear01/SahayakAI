@@ -40,10 +40,11 @@ npm run build
 
 ## Voice
 
-- Push-to-talk with the Web Speech API (`hi-IN`, `en-IN`).
+- Press-and-hold push-to-talk with the Web Speech API (`hi-IN`, `en-IN`); recognized speech starts or answers a task automatically.
 - Typed input is always available.
 - Auto language picks Hindi or English from the **browser language**. It does not claim mixed-language recognition.
 - Only Hindi and English are supported.
+- Spoken replies use a matching installed voice; if Hindi speech is unavailable, approval details fall back to English speech or remain available on screen.
 - Stopping speech is not the same as STOP on a cloud-browser task.
 
 ## Safety

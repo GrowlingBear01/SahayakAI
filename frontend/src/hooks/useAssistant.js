@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, isHealthy } from "../services/api.js";
-import { eventKey, fieldsWithKeys, isHttpUrl } from "../utils/approval.js";
+import {
+  eventKey,
+  fieldsWithKeys,
+  isHttpUrl,
+  spokenFieldReadback,
+} from "../utils/approval.js";
 import {
   TERMINAL_STATES,
   eventMessage,
   isActiveTask,
   isStopCommand,
   resolvedLang,
+  t,
 } from "../utils/messages.js";
 import { useTaskEvents } from "./useTaskEvents.js";
 import { useVoice } from "./useVoice.js";
@@ -70,6 +76,7 @@ export function useAssistant() {
   const languageRef = useRef(language);
   const speakRef = useRef(() => {});
   const stopTaskRef = useRef(async () => {});
+  const submitSpeechRef = useRef(() => {});
 
   taskIdRef.current = taskId;
   taskStateRef.current = taskState;
@@ -99,24 +106,34 @@ export function useAssistant() {
         setFlowMismatch(true);
       }
       const fields = fieldsWithKeys(nextApproval, {});
-      const readback =
-        resolvedLang(lang) === "hi"
-          ? nextApproval?.read_back_hi || text
-          : nextApproval?.read_back_en || text;
-      const values = fields
-        .map((field) => `${field.label_en || field.label_hi}: ${field.value}`)
-        .join(". ");
+      const readbackEn = nextApproval?.read_back_en || event.message_en || text;
+      const readbackHi = nextApproval?.read_back_hi || event.message_hi || text;
+      const noticeEn = nextApproval?.data_notice_en || t("dataNoticeFallback", "en");
+      const noticeHi = nextApproval?.data_notice_hi || t("dataNoticeFallback", "hi");
+      const siteEn = `${t(nextApproval?.site_kind === "demo" ? "demoForm" : "realWebsite", "en")}.`;
+      const siteHi = `${t(nextApproval?.site_kind === "demo" ? "demoForm" : "realWebsite", "hi")}।`;
+      const spokenEn = `${siteEn} ${readbackEn} ${noticeEn} ${spokenFieldReadback(fields, "en")}`;
+      const spokenHi = `${siteHi} ${readbackHi} ${noticeHi} ${spokenFieldReadback(fields, "hi")}`;
       const key = eventKey(event);
       if (key && !spokenKeys.current.has(key)) {
         spokenKeys.current.add(key);
-        speakRef.current(`${readback} ${values}`, { lang, key });
+        const isHindi = resolvedLang(lang) === "hi";
+        speakRef.current(isHindi ? spokenHi : spokenEn, {
+          lang,
+          key,
+          fallbackText: isHindi ? spokenEn : undefined,
+        });
       }
     } else {
       setApproval(null);
       const key = eventKey(event);
       if (text && key && !spokenKeys.current.has(key)) {
         spokenKeys.current.add(key);
-        speakRef.current(text, { lang, key });
+        speakRef.current(text, {
+          lang,
+          key,
+          fallbackText: resolvedLang(lang) === "hi" ? event.message_en : undefined,
+        });
       }
     }
 
@@ -134,9 +151,11 @@ export function useAssistant() {
     onFinal: (text) => {
       setTranscript(text);
       setTyped(text);
-      if (isStopCommand(text) && taskIdRef.current && isActiveTask(taskStateRef.current)) {
-        stopTaskRef.current();
+      if (isStopCommand(text)) {
+        if (taskIdRef.current && isActiveTask(taskStateRef.current)) stopTaskRef.current();
+        return;
       }
+      submitSpeechRef.current(text);
     },
   });
 
@@ -238,7 +257,7 @@ export function useAssistant() {
   const startTask = useCallback(
     async (rawText) => {
       const text = String(rawText || typed || "").trim();
-      if (!text || inFlight.current) return;
+      if (!text) return;
       if (isStopCommand(text) && taskIdRef.current && isActiveTask(taskStateRef.current)) {
         await stopTask();
         return;
@@ -254,6 +273,7 @@ export function useAssistant() {
         }
         return;
       }
+      if (inFlight.current) return;
 
       inFlight.current = true;
       setBusy(true);
@@ -289,6 +309,7 @@ export function useAssistant() {
     },
     [language, stopTask, typed, voice],
   );
+  submitSpeechRef.current = startTask;
 
   const approve = useCallback(
     async (edits = null) => {
@@ -376,13 +397,18 @@ export function useAssistant() {
   useEffect(() => {
     if (!voice.support.recognition) setVoiceError("micUnsupported");
     else if (voice.support.permission === "denied") setVoiceError("micDenied");
+    else if (voice.error) setVoiceError(voice.error);
     else setVoiceError(null);
-  }, [voice.support]);
+  }, [voice.error, voice.support]);
 
   const replay = useCallback(() => {
     if (!assistantText) return;
-    voice.speak(assistantText, { lang: language, key: `replay:${assistantText}` });
-  }, [assistantText, language, voice]);
+    voice.speak(assistantText, {
+      lang: language,
+      key: `replay:${assistantText}`,
+      fallbackText: resolvedLang(language) === "hi" ? lastEvent?.message_en : undefined,
+    });
+  }, [assistantText, language, lastEvent, voice]);
 
   return {
     language,

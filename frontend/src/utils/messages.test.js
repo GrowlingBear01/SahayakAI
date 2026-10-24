@@ -8,6 +8,8 @@ describe("safety helpers", () => {
     expect(isStopCommand("stop")).toBe(true);
     expect(isStopCommand("ruko")).toBe(true);
     expect(isStopCommand("रुको")).toBe(true);
+    expect(isStopCommand("रुको।")).toBe(true);
+    expect(isStopCommand("stop!")).toBe(true);
     expect(isStopCommand("")).toBe(false);
     expect(isStopCommand("yes")).toBe(false);
   });
