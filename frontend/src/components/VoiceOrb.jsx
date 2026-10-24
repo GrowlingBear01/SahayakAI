@@ -12,6 +12,18 @@ export default function VoiceOrb({ state }) {
       className={`orb ${state}`}
       role="img"
       aria-label={`Assistant ${label}`}
-    />
+    >
+      {state === "listening" || state === "speaking" ? (
+        <span className="orb-wave" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+        </span>
+      ) : null}
+    </div>
   );
 }
