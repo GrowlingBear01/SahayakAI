@@ -1,0 +1,19 @@
+{
+  "id": "mock_scheme_application",
+  "flow_type": "submission",
+  "title_en": "Scheme application (demo form)",
+  "title_hi": "योजना आवेदन (डेमो फ़ॉर्म)",
+  "url": "${MOCK_SITE_BASE_URL}/mock/form",
+  "goal_template": "On this page, fill in the application form with exactly these values:\n{{field_lines}}\nIf a cookie or consent banner appears, close it first.\nLeave the Approval code field empty. Do NOT click the Submit button. Do not navigate away from this page.\nWhen every field is filled, stop and return JSON matching this exact structure:\n{\"filled\": {\"full_name\": \"...\", \"age\": \"...\", \"state\": \"...\", \"phone\": \"...\"}, \"submitted\": false, \"problems\": []}\nIf a field cannot be filled, leave it and describe why in \"problems\".",
+  "submit_goal_template": "On this page, fill in the application form with exactly these values:\n{{field_lines}}\n- Approval code: \"{{approval_code}}\"\nThen click the Submit button exactly once and wait for the confirmation page. Never click Submit a second time.\nReturn JSON matching this exact structure:\n{\"submitted\": true, \"confirmation_message\": \"...\", \"reference_number\": \"...\"}\nIf no confirmation appears, return {\"submitted\": false, \"problems\": [\"...\"]}.",
+  "fields": [
+    {"key": "full_name", "label_en": "Full name", "label_hi": "पूरा नाम", "required": true, "type": "text", "max_len": 80},
+    {"key": "age", "label_en": "Age", "label_hi": "उम्र", "required": true, "type": "number", "min": 1, "max": 120},
+    {"key": "state", "label_en": "State", "label_hi": "राज्य", "required": true, "type": "select"},
+    {"key": "phone", "label_en": "Mobile number", "label_hi": "मोबाइल नंबर", "required": true, "type": "text", "pattern": "^[0-9]{10}$"}
+  ],
+  "sensitive_fields": [],
+  "system_fields": [{"key": "approval_code", "source": "orchestrator", "shown_to_user": false}],
+  "success_markers": ["Application received", "Reference number"],
+  "needs_human": ["captcha", "otp", "login"]
+}
