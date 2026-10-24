@@ -42,6 +42,7 @@ class TinyFishAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.reported_fields["age"], "72")
         self.assertEqual(result.screenshot_url, "https://shot.example/1")
+        self.assertEqual(result.streaming_url, "https://stream.example/run-1")
         self.assertEqual(requests[0].method, "POST")
         self.assertEqual(requests[0].url.path, "/v1/automation/run-async")
         self.assertNotIn("test-key", requests[0].content.decode())

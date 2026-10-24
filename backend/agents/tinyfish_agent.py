@@ -119,6 +119,7 @@ class TinyFishAgent(BrowserAgent):
                     run_id,
                     final_text=self._result_text(result),
                     screenshot_url=self._screenshot(run),
+                    streaming_url=run.get("streaming_url"),
                     error="TinyFish completed without a JSON result object",
                 )
             problems = self._problems(result)
@@ -129,6 +130,7 @@ class TinyFishAgent(BrowserAgent):
                     run_id,
                     final_text=json.dumps(result, ensure_ascii=False),
                     screenshot_url=self._screenshot(run),
+                    streaming_url=run.get("streaming_url"),
                     error="The website requires human action",
                     needs_human=needs_human,
                 )
@@ -139,6 +141,7 @@ class TinyFishAgent(BrowserAgent):
                 reported_fields=self._string_fields(reported),
                 final_text=json.dumps(result, ensure_ascii=False),
                 screenshot_url=self._screenshot(run),
+                streaming_url=run.get("streaming_url"),
                 error="; ".join(problems) if problems else None,
             )
 
@@ -148,6 +151,7 @@ class TinyFishAgent(BrowserAgent):
                 run_id,
                 final_text=self._result_text(result),
                 screenshot_url=self._screenshot(run),
+                streaming_url=run.get("streaming_url"),
                 error="TinyFish run was cancelled",
             )
         return RunResult(
@@ -155,6 +159,7 @@ class TinyFishAgent(BrowserAgent):
             run_id,
             final_text=self._result_text(result),
             screenshot_url=self._screenshot(run),
+            streaming_url=run.get("streaming_url"),
             error=self._run_error(error) or f"TinyFish run ended with {status}",
             needs_human=(
                 "blocked"
