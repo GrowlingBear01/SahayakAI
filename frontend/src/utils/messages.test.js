@@ -25,6 +25,12 @@ describe("safety helpers", () => {
     expect(t("discoveryFlowAnnouncement", "hi")).toContain("असली वेबसाइट");
   });
 
+  it("provides localized labels for the conversation workspace", () => {
+    expect(t("conversation", "en")).toBe("The conversation");
+    expect(t("activity", "hi")).toBe("गतिविधि");
+    expect(t("copyResponse", "hi")).toBe("उत्तर कॉपी करें");
+  });
+
   it("never treats a fake URL as a live browser preview", () => {
     expect(isHttpUrl("javascript:alert(1)")).toBe(false);
     expect(isHttpUrl("not-a-url")).toBe(false);
