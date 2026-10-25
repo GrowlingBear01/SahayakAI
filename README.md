@@ -234,6 +234,10 @@ Run each service in a separate PowerShell terminal from the repository root unle
 
 ### Terminal 1 — backend API
 
+Before starting the backend, copy `.env.example` to `.env` and set
+`LLM_API_KEY` to your Gemini API key. The key stays on the backend and must not
+be committed or pasted into chat.
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -257,6 +261,17 @@ python -m uvicorn mock_site.app:app --host 127.0.0.1 --port 8001
 
 Open <http://127.0.0.1:8001/mock/form> to inspect the fake form. For live TinyFish access, configure the public HTTPS tunnel and set `MOCK_SITE_BASE_URL` in `.env` to that tunnel's base URL before starting/restarting the backend.
 
+Start a Cloudflare Quick Tunnel in another terminal when TinyFish needs public
+access to the form:
+
+```powershell
+cloudflared tunnel --protocol http2 --url http://127.0.0.1:8001 --no-autoupdate
+```
+
+Set `MOCK_SITE_BASE_URL` in `.env` to the HTTPS URL printed by cloudflared and
+restart the backend. Keep the tunnel running; Quick Tunnel URLs change when a
+new tunnel is created. The HTTP/2 option avoids networks that block QUIC.
+
 ### Terminal 3 — frontend
 
 ```powershell
@@ -266,6 +281,9 @@ npm run dev
 ```
 
 Open the local URL shown by Vite, usually <http://localhost:5173>. In development, Vite proxies `/health`, `/flows`, and `/tasks` to the backend on port `8000`.
+
+Run the npm commands from the `frontend` directory; the repository root does
+not contain a `package.json`.
 
 ### Try the workflows
 
