@@ -9,7 +9,10 @@ from backend.orchestrator import Orchestrator
 from backend.planner import PlannerResult
 from backend.schemas import TaskState, WebsiteResolutionOutput
 from backend.task_store import TaskStore
-from backend.website_search import WebsiteSearchError
+from backend.website_search import (
+    WebsiteSearchError,
+    WebsiteSearchRateLimitError,
+)
 from mock_site.store import MockStore
 
 
@@ -46,6 +49,13 @@ class WebsiteAgent:
         return CancelResult("CANCELLED")
 
 
+class RateLimitedWebsiteSearch:
+    async def resolve(self, site_name: str) -> WebsiteResolutionOutput:
+        raise WebsiteSearchRateLimitError(
+            "Gemini Search is rate- or quota-limited (HTTP 429)."
+        )
+
+
 def run_result(payload: dict, run_id: str) -> RunResult:
     return RunResult(True, run_id, final_text=json.dumps(payload))
 
@@ -55,13 +65,15 @@ class WebDiscoveryTests(unittest.TestCase):
         self.temp_dir = TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
 
-    def make_orchestrator(self, agent: WebsiteAgent) -> Orchestrator:
+    def make_orchestrator(
+        self, agent: WebsiteAgent, website_search=None
+    ) -> Orchestrator:
         return Orchestrator(
             TaskStore(),
             agent=agent,
             submission_store=MockStore(Path(self.temp_dir.name) / "mock.db"),
             planner=WebPlanner(),
-            website_search=agent,
+            website_search=website_search or agent,
         )
 
     @staticmethod
@@ -259,6 +271,31 @@ class WebDiscoveryTests(unittest.TestCase):
             self.assertEqual(task.web_phase, "question")
             self.assertEqual(len(agent.calls), 0)
             self.assertEqual(len(agent.search_queries), 2)
+
+        asyncio.run(scenario())
+
+    def test_search_rate_limit_has_recoverable_specific_failure(self) -> None:
+        async def scenario() -> None:
+            agent = WebsiteAgent()
+            orchestrator = self.make_orchestrator(
+                agent, website_search=RateLimitedWebsiteSearch()
+            )
+            task = await orchestrator.create_task(
+                "Find a website", "en", "web"
+            )
+            task = await self.wait_for_phase(
+                orchestrator, task.task_id, "site_name"
+            )
+
+            self.assertEqual(task.state, TaskState.COULD_NOT_FINISH)
+            self.assertEqual(task.reason, "website_search_rate_limited")
+            self.assertIn("HTTP 429", task.error)
+            self.assertIn("quota", task.error_hi.lower())
+            self.assertEqual(agent.calls, [])
+            result_event = orchestrator._history[task.task_id][-1]
+            self.assertEqual(
+                result_event.data["reason"], "website_search_rate_limited"
+            )
 
         asyncio.run(scenario())
 

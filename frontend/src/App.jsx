@@ -174,6 +174,9 @@ export default function App() {
           <ResultCard
             language={language}
             result={assistant.result}
+            onRetryWebsiteSearch={() =>
+              assistant.startTask(assistant.userUtterance)
+            }
             onSwitchDemo={() => {
               assistant.newConversation();
               assistant.setFlow("demo");

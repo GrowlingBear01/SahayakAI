@@ -66,6 +66,14 @@ export const copy = {
   },
   websiteAnswer: { en: "Information found", hi: "मिली हुई जानकारी" },
   websiteSources: { en: "Sources on this site", hi: "इस वेबसाइट के स्रोत" },
+  retryWebsiteSearch: {
+    en: "Retry website search",
+    hi: "वेबसाइट खोज फिर से करें",
+  },
+  websiteSearchRateLimitedHelp: {
+    en: "The search provider temporarily rejected the lookup due to a rate or quota limit. Wait a little and retry. If it keeps happening, check the Gemini API quota and billing for the key configured on the backend.",
+    hi: "खोज सेवा ने अनुरोध सीमा या quota के कारण खोज रोक दी। थोड़ी देर बाद फिर कोशिश करें। समस्या जारी रहे तो backend में configured Gemini API key की quota और billing जाँचें।",
+  },
   websiteConfidenceCaveat: {
     en: "The site is a likely match, not independently verified by SahayakAI.",
     hi: "यह वेबसाइट संभावित मिलान है; SahayakAI ने इसे स्वतंत्र रूप से सत्यापित नहीं किया है।",

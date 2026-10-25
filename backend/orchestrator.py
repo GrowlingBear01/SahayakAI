@@ -44,6 +44,7 @@ from .website_search import (
     WebsiteSearch,
     WebsiteSearchConfigurationError,
     WebsiteSearchError,
+    WebsiteSearchRateLimitError,
 )
 from mock_site.store import MockStore, database_path
 
@@ -940,6 +941,19 @@ class Orchestrator:
                 reason="website_search_not_configured",
             )
             return
+        except WebsiteSearchRateLimitError as error:
+            logger.warning(
+                "Website resolution rate-limited for task %s",
+                task_id,
+            )
+            if self._require_task(task_id).cancelled:
+                return
+            await self._fail(
+                self._require_task(task_id),
+                str(error),
+                reason="website_search_rate_limited",
+            )
+            return
         except WebsiteSearchError as error:
             logger.warning(
                 "Website resolution failed for task %s: %s",
@@ -1392,6 +1406,11 @@ class Orchestrator:
         task.error = error
         if needs_human_kind:
             task.error_hi = self._human_action_message_hi(needs_human_kind)
+        elif reason == "website_search_rate_limited":
+            task.error_hi = (
+                "वेबसाइट खोज सेवा पर अनुरोध सीमा लागू है। थोड़ी देर बाद फिर कोशिश करें "
+                "और Gemini API की quota तथा billing जाँचें।"
+            )
         elif task.flow_id == "web_discovery":
             task.error_hi = (
                 "सार्वजनिक वेबसाइट से जानकारी नहीं मिल सकी। कृपया नाम या अनुरोध "

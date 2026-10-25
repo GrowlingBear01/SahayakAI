@@ -21,7 +21,12 @@ const HUMAN_ACTION_LABEL = {
   blocked: "needsHumanBlocked",
 };
 
-export default function ResultCard({ language, result, onSwitchDemo }) {
+export default function ResultCard({
+  language,
+  result,
+  onSwitchDemo,
+  onRetryWebsiteSearch,
+}) {
   if (!result) return null;
   const titleKey = TITLES[result.state] || "couldNotFinish";
   const evidence = result.evidence;
@@ -31,10 +36,14 @@ export default function ResultCard({ language, result, onSwitchDemo }) {
   const note =
     result.note === "stop_too_late" ? t("stopTooLate", language) : result.note;
   const isDiscovery = result.flow_id === "myscheme_discovery";
-  const isWebResearch = result.flow_id === "web_discovery";
   const schemes = Array.isArray(result.schemes) ? result.schemes : [];
   const webSources = Array.isArray(result.web_sources) ? result.web_sources : [];
   const selectedSite = result.selected_site;
+  const isWebResearch =
+    result.flow_id === "web_discovery" &&
+    (selectedSite || result.web_answer || webSources.length > 0);
+  const canRetryWebsiteSearch =
+    result.reason === "website_search_rate_limited";
   let selectedHost = "";
   try {
     selectedHost = new URL(selectedSite?.url).hostname;
@@ -103,8 +112,10 @@ export default function ResultCard({ language, result, onSwitchDemo }) {
           ))}
         </div>
       ) : null}
-      <p className="muted">{t("notProof", language)}</p>
-      {kind ? (
+      {!canRetryWebsiteSearch ? (
+        <p className="muted">{t("notProof", language)}</p>
+      ) : null}
+      {kind && (evidence?.text || evidence?.screenshot_url) ? (
         <div className="evidence">
           <strong>{t(EVIDENCE_LABEL[kind] || "evidenceReported", language)}</strong>
           {evidence.text ? <p>{evidence.text}</p> : <p className="muted">—</p>}
@@ -139,6 +150,18 @@ export default function ResultCard({ language, result, onSwitchDemo }) {
         <button type="button" className="primary" onClick={onSwitchDemo}>
           {t("switchToDemo", language)}
         </button>
+      ) : null}
+      {canRetryWebsiteSearch && onRetryWebsiteSearch ? (
+        <div className="evidence">
+          <p>{t("websiteSearchRateLimitedHelp", language)}</p>
+          <button
+            type="button"
+            className="primary"
+            onClick={onRetryWebsiteSearch}
+          >
+            {t("retryWebsiteSearch", language)}
+          </button>
+        </div>
       ) : null}
     </section>
   );

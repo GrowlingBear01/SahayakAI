@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Protocol
 
@@ -43,11 +44,18 @@ class WebsiteSearchConfigurationError(WebsiteSearchError):
     pass
 
 
+class WebsiteSearchRateLimitError(WebsiteSearchError):
+    pass
+
+
 class WebsiteSearch(Protocol):
     async def resolve(self, site_name: str) -> WebsiteResolutionOutput: ...
 
 
 class GeminiWebsiteSearch:
+    MAX_RATE_LIMIT_RETRIES = 2
+    MAX_RETRY_AFTER_SECONDS = 10.0
+
     def __init__(
         self,
         api_key: str,
@@ -89,18 +97,13 @@ class GeminiWebsiteSearch:
         try:
             if self.client is None:
                 async with httpx.AsyncClient(timeout=45.0) as client:
-                    response = await client.post(
-                        INTERACTIONS_ENDPOINT,
-                        headers={"x-goog-api-key": self.api_key},
-                        json=request_body,
+                    response = await self._post_with_rate_limit_retry(
+                        client, request_body
                     )
             else:
-                response = await self.client.post(
-                    INTERACTIONS_ENDPOINT,
-                    headers={"x-goog-api-key": self.api_key},
-                    json=request_body,
+                response = await self._post_with_rate_limit_retry(
+                    self.client, request_body
                 )
-            response.raise_for_status()
         except httpx.HTTPStatusError as error:
             logger.warning(
                 "Gemini website search returned HTTP %s",
@@ -148,3 +151,48 @@ class GeminiWebsiteSearch:
             raise WebsiteSearchError(
                 "Grounded website search returned an invalid candidate response."
             ) from None
+
+    async def _post_with_rate_limit_retry(
+        self,
+        client: httpx.AsyncClient,
+        request_body: dict,
+    ) -> httpx.Response:
+        for attempt in range(self.MAX_RATE_LIMIT_RETRIES + 1):
+            response = await client.post(
+                INTERACTIONS_ENDPOINT,
+                headers={"x-goog-api-key": self.api_key},
+                json=request_body,
+            )
+            if response.status_code != 429:
+                response.raise_for_status()
+                return response
+
+            retry_after = self._retry_after_seconds(response)
+            if attempt == self.MAX_RATE_LIMIT_RETRIES or (
+                retry_after is not None
+                and retry_after > self.MAX_RETRY_AFTER_SECONDS
+            ):
+                logger.warning(
+                    "Gemini website search rate limit persisted after %s attempt(s)",
+                    attempt + 1,
+                )
+                raise WebsiteSearchRateLimitError(
+                    "Gemini Search is rate- or quota-limited (HTTP 429). Wait, "
+                    "check Gemini API quota and billing, then retry."
+                )
+
+            delay = retry_after if retry_after is not None else 1.0 * (2**attempt)
+            await asyncio.sleep(delay)
+
+        raise AssertionError("rate-limit retry loop exited unexpectedly")
+
+    @staticmethod
+    def _retry_after_seconds(response: httpx.Response) -> float | None:
+        value = response.headers.get("Retry-After")
+        if value is None:
+            return None
+        try:
+            seconds = float(value)
+        except ValueError:
+            return None
+        return max(0.0, seconds)
