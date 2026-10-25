@@ -4,20 +4,20 @@ export const copy = {
     en: "Speak. Review. Approve. Then we act.",
     hi: "बोलें। जाँचें। अनुमति दें। तब हम काम करेंगे।",
   },
-  welcome: {
-    en: "I can help you explore official information or fill a clearly labelled demo form. I will never submit anything without your approval.",
-    hi: "मैं आधिकारिक जानकारी खोजने या साफ़ तौर पर डेमो फ़ॉर्म भरने में मदद कर सकता हूँ। आपकी अनुमति के बिना मैं कुछ जमा नहीं करूँगा।",
-  },
   listening: { en: "Listening…", hi: "सुन रहा हूँ…" },
   processing: { en: "Thinking…", hi: "समझ रहा हूँ…" },
   speaking: { en: "Speaking…", hi: "बोल रहा हूँ…" },
-  working: { en: "Working in a cloud browser…", hi: "क्लाउड ब्राउज़र में काम चल रहा है…" },
+  working: { en: "Working on your request…", hi: "आपके अनुरोध पर काम चल रहा है…" },
   idle: { en: "Ready when you are", hi: "जब आप तैयार हों" },
   typedPlaceholder: {
     en: "Type a request, or use the microphone",
     hi: "अनुरोध लिखें, या माइक्रोफ़ोन का उपयोग करें",
   },
   send: { en: "Send", hi: "भेजें" },
+  externalProcessingNotice: {
+    en: "Before sending: your request is processed by Gemini. Use fake details; do not enter sensitive personal information.",
+    hi: "भेजने से पहले: आपका अनुरोध Gemini द्वारा संसाधित होगा। नकली जानकारी दें; संवेदनशील निजी जानकारी न लिखें।",
+  },
   startListening: { en: "Start listening", hi: "सुनना शुरू करें" },
   stopListening: { en: "Stop listening", hi: "सुनना बंद करें" },
   interrupt: { en: "Interrupt speech", hi: "आवाज़ रोकें" },
@@ -45,8 +45,8 @@ export const copy = {
     hi: "इस वेबसाइट पर आप क्या जानना चाहते हैं?",
   },
   webModeNotice: {
-    en: "TinyFish will search for the likely official site, then read public pages only. It will not sign in, fill forms, or submit anything.",
-    hi: "TinyFish संभावित आधिकारिक वेबसाइट खोजेगा, फिर केवल सार्वजनिक पेज पढ़ेगा। यह लॉगिन, फ़ॉर्म भरना या कुछ जमा नहीं करेगा।",
+    en: "TinyFish can search public pages and return public media links after you approve the exact request. It will not sign in, submit, purchase, or start playback.",
+    hi: "आपकी अनुमति के बाद TinyFish सार्वजनिक पेज खोजकर मीडिया लिंक दे सकता है। यह लॉगिन, फ़ॉर्म जमा, खरीदारी या वीडियो चलाना नहीं करेगा।",
   },
   chooseWebsite: { en: "Choose the site you mean", hi: "अपनी वेबसाइट चुनें" },
   chooseWebsiteHelp: {
@@ -66,6 +66,11 @@ export const copy = {
   },
   websiteAnswer: { en: "Information found", hi: "मिली हुई जानकारी" },
   websiteSources: { en: "Sources on this site", hi: "इस वेबसाइट के स्रोत" },
+  publicMedia: { en: "Public videos and songs", hi: "सार्वजनिक वीडियो और गाने" },
+  mediaPlaybackNotice: {
+    en: "Choose a link to open it on YouTube; playback starts there under your control.",
+    hi: "लिंक चुनकर YouTube पर खोलें; वीडियो आपके नियंत्रण में वहाँ चलेगा।",
+  },
   websiteConfidenceCaveat: {
     en: "The site is a likely match, not independently verified by SahayakAI.",
     hi: "यह वेबसाइट संभावित मिलान है; SahayakAI ने इसे स्वतंत्र रूप से सत्यापित नहीं किया है।",
@@ -91,6 +96,22 @@ export const copy = {
   micDenied: {
     en: "Microphone permission was denied. You can still type.",
     hi: "माइक्रोफ़ोन की अनुमति नहीं मिली। आप लिखकर जारी रख सकते हैं।",
+  },
+  micNoSpeech: {
+    en: "No speech was detected. Try again or type your request.",
+    hi: "कोई आवाज़ नहीं पहचानी गई। फिर कोशिश करें या अनुरोध लिखें।",
+  },
+  micNetworkError: {
+    en: "Speech recognition could not reach its service. Try again or type your request.",
+    hi: "आवाज़ पहचान सेवा से संपर्क नहीं हो सका। फिर कोशिश करें या अनुरोध लिखें।",
+  },
+  micCaptureError: {
+    en: "No microphone input is available. Check your microphone or type your request.",
+    hi: "माइक्रोफ़ोन से आवाज़ नहीं मिल रही। माइक्रोफ़ोन जाँचें या अनुरोध लिखें।",
+  },
+  micRecognitionError: {
+    en: "Speech recognition failed. Try again or type your request.",
+    hi: "आवाज़ पहचान में समस्या हुई। फिर कोशिश करें या अनुरोध लिखें।",
   },
   voiceReviewRequest: {
     en: "Review the recognized text in the box. Tap Send, or start listening again and say “send” to continue.",

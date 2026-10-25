@@ -25,3 +25,19 @@ export function isVoiceSendCommand(text) {
     "जमा करें",
   ].includes(value);
 }
+
+export function recognitionErrorKey(error) {
+  switch (String(error || "").toLowerCase()) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return "micDenied";
+    case "no-speech":
+      return "micNoSpeech";
+    case "network":
+      return "micNetworkError";
+    case "audio-capture":
+      return "micCaptureError";
+    default:
+      return "micRecognitionError";
+  }
+}

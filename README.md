@@ -38,6 +38,13 @@ available as a separate adapter and must be configured explicitly.
   filtering, and an answer backed by public page links. TinyFish browses the
   selected site only; the deterministic mock agent does not simulate or browse
   arbitrary websites.
+- Public music/video discovery: searches YouTube for user-requested titles,
+  artists, or topics, and returns validated public video links. A user-provided
+  YouTube share link is normalized to its canonical video URL. Browsing requires
+  explicit approval, and users choose whether to open or play media; the agent
+  does not click, play, sign in, or perform other site actions. Explicit YouTube
+  search commands use the known public YouTube domain directly instead of
+  waiting on the general-purpose request planner.
 - myScheme discovery with a separate pre-run approval, page-sourced scheme
   descriptions, optional Hindi translations when returned, same-site-only links,
   and a demo-form fallback when results cannot be safely extracted.
@@ -64,6 +71,10 @@ Before starting the backend, copy `.env.example` to `.env` and set
 `LLM_API_KEY` to your Gemini API key. The key stays on the backend and must not
 be committed or pasted into chat.
 
+The request text and any values collected for a task are sent to Gemini for
+planning. The app does not currently accept real personal data; use synthetic
+details only and do not enter sensitive information.
+
 ### 1. Start the backend
 
 From the repository root, run these commands in PowerShell:
@@ -72,14 +83,15 @@ From the repository root, run these commands in PowerShell:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend\requirements.txt
-python -m uvicorn backend.main:app --reload --env-file .env
+python -m uvicorn backend.main:app --host 127.0.0.1 --reload --env-file .env
 ```
 
 The planner uses `LLM_PROVIDER=gemini` and `LLM_MODEL=gemini-3.8-flash` by
 default. It sends requests through Gemini's stateless Interactions API and
-validates the JSON response before any task can reach approval. Public website
-discovery also uses Gemini's Google Search grounding tool with the same API key;
-it no longer opens a Google results page in TinyFish.
+validates the JSON response before any task can reach approval. The request
+text and collected task values are sent to Gemini; use synthetic details only.
+Public website discovery also uses Gemini's Google Search grounding tool with
+the same API key; it no longer opens a Google results page in TinyFish.
 
 The browser agent defaults to `BROWSER_AGENT=mock` for offline development.
 To run tasks with TinyFish, set `BROWSER_AGENT=tinyfish` and configure
@@ -88,15 +100,24 @@ the demo site over public HTTPS, so set `MOCK_SITE_BASE_URL` to the HTTPS tunnel
 URL for the separate mock-site app. Keep both processes on the same machine
 because they share the mock site's local SQLite verification database. Generic
 website discovery also requires `BROWSER_AGENT=tinyfish`; the mock agent does
-not simulate or browse arbitrary sites. When TinyFish is selected, a missing
-API key is a startup error; the backend will not silently fall back to the mock
-agent.
+not simulate or browse arbitrary sites. The myScheme read-only search also
+requires TinyFish; selecting it with the mock agent now reports the required
+configuration instead of starting a browser task that cannot succeed. When
+TinyFish is selected, a missing API key is a startup error; the backend will
+not silently fall back to the mock agent.
 
 The backend API docs and health endpoint are available at:
 
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/ready`
 - `http://127.0.0.1:8000/flows`
+
+`/health` is a liveness check. `/ready` checks local planner/provider
+configuration and returns HTTP 503 when required configuration is missing; it
+does not make external API calls. For cross-origin frontend deployments, set
+`CORS_ALLOWED_ORIGINS` to a comma-separated list of exact trusted origins. The
+default is same-origin only.
 
 ### 2. Start the separate demo site
 
@@ -131,6 +152,7 @@ Run frontend tests and a production build from `frontend`:
 
 ```powershell
 npm ci
+npm run lint
 npm test
 npm run build
 ```
@@ -176,4 +198,11 @@ We'll build the application in small milestones and test each part before integr
   completing a challenge in that separate tab does not resume the cloud run.
 - Don't report success unless the available evidence supports it.
 
-More details about the architecture, API contract, and implementation requirements are maintained in `SPEC.md`.
+## Deployment limitations
+
+This is a local prototype, not a public multi-user service. Task IDs currently
+do not enforce user ownership, task/event state is in memory, and the API has no
+authentication, per-user rate limits, or concurrency quotas. Keep the backend
+bound to localhost and do not expose it publicly until those controls and
+shared durable task storage are implemented. The readiness endpoint is a
+configuration check, not a security or dependency-availability guarantee.

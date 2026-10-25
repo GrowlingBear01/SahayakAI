@@ -40,6 +40,7 @@ function resultFromEvent(event) {
     schemes: Array.isArray(data.schemes) ? data.schemes : [],
     web_answer: data.web_answer || null,
     web_sources: Array.isArray(data.web_sources) ? data.web_sources : [],
+    web_media: Array.isArray(data.web_media) ? data.web_media : [],
     selected_site: data.selected_site || null,
     offer_demo: data.offer_demo === true,
   };
@@ -59,6 +60,7 @@ export function useAssistant() {
   const [approval, setApproval] = useState(null);
   const [streamingUrl, setStreamingUrl] = useState(null);
   const [liveBrowserAction, setLiveBrowserAction] = useState(null);
+  const [browserStarted, setBrowserStarted] = useState(false);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -104,7 +106,11 @@ export function useAssistant() {
     setAssistantText(text);
 
     const url = extractStreamingUrl(event.data);
-    if (url) setStreamingUrl(url);
+    if (url) {
+      setStreamingUrl(url);
+      setBrowserStarted(true);
+    }
+    if (event.data?.browser_started === true) setBrowserStarted(true);
     if (typeof event.data?.action === "string" && event.data.action.trim()) {
       setLiveBrowserAction(event.data.action.trim());
     }
@@ -253,6 +259,9 @@ export function useAssistant() {
             web_sources: Array.isArray(snapshot.web_sources)
               ? snapshot.web_sources
               : [],
+            web_media: Array.isArray(snapshot.web_media)
+              ? snapshot.web_media
+              : [],
             selected_site: snapshot.selected_site || null,
             offer_demo:
               snapshot.flow_id === "myscheme_discovery" &&
@@ -310,6 +319,7 @@ export function useAssistant() {
         web_sources: Array.isArray(response.web_sources)
           ? response.web_sources
           : [],
+        web_media: Array.isArray(response.web_media) ? response.web_media : [],
         selected_site: response.selected_site || null,
         offer_demo: response.offer_demo === true,
         note: response.note_key || null,
@@ -366,6 +376,7 @@ export function useAssistant() {
       setProgress([]);
       setStreamingUrl(null);
       setLiveBrowserAction(null);
+      setBrowserStarted(false);
       setFlowMismatch(false);
       setUserUtterance(text);
       setAssistantText("");
@@ -375,11 +386,7 @@ export function useAssistant() {
 
       const lang = language === "auto" ? "auto" : language;
       try {
-        const requestText =
-          flowRef.current === "web"
-            ? `Use the web_discovery flow. The user-provided site or service name is: ${JSON.stringify(text)}`
-            : text;
-        const created = await api.createTask(requestText, lang, flowRef.current);
+        const created = await api.createTask(text, lang, flowRef.current);
         if (!created?.task_id) throw new Error("missing_task_id");
         setTaskId(created.task_id);
         setTaskState("planning");
@@ -465,6 +472,7 @@ export function useAssistant() {
     setApproval(null);
     setStreamingUrl(null);
     setLiveBrowserAction(null);
+    setBrowserStarted(false);
     setResult(null);
     setBusy(false);
     setUserUtterance("");
@@ -491,8 +499,9 @@ export function useAssistant() {
   useEffect(() => {
     if (!voice.support.recognition) setVoiceError("micUnsupported");
     else if (voice.support.permission === "denied") setVoiceError("micDenied");
+    else if (voice.recognitionError) setVoiceError(voice.recognitionError);
     else setVoiceError(null);
-  }, [voice.support]);
+  }, [voice.recognitionError, voice.support]);
 
   const replay = useCallback(() => {
     if (!assistantText) return;
@@ -516,6 +525,7 @@ export function useAssistant() {
     approval,
     streamingUrl,
     liveBrowserAction,
+    browserStarted,
     result,
     busy,
     approvalBusy,

@@ -246,6 +246,16 @@ class M8SafetyTests(unittest.TestCase):
                 )
             )
             await agent.started.wait()
+            stream_started = asyncio.Event()
+            streamed_events = []
+
+            async def collect_events() -> None:
+                async for event in orchestrator.events(task.task_id):
+                    streamed_events.append(event)
+                    stream_started.set()
+
+            event_stream = asyncio.create_task(collect_events())
+            await stream_started.wait()
             progress_events = [
                 event
                 for event in orchestrator._history[task.task_id]
@@ -259,12 +269,26 @@ class M8SafetyTests(unittest.TestCase):
             stopped = await orchestrator.stop(task.task_id)
             self.assertEqual(stopped.state, TaskState.STOPPED)
             self.assertEqual(agent.cancelled, ["blocked-run"])
+            await event_stream
+            terminal_events = [
+                event
+                for event in streamed_events
+                if event.state == TaskState.STOPPED
+            ]
+            self.assertEqual(len(terminal_events), 1)
 
             agent.release.set()
             await pending_approval
             final = orchestrator.store.get(task.task_id)
             self.assertEqual(final.state, TaskState.STOPPED)
             self.assertIsNone(final.approval_id)
+            self.assertEqual(
+                sum(
+                    event.state == TaskState.STOPPED
+                    for event in orchestrator._history[task.task_id]
+                ),
+                1,
+            )
 
         asyncio.run(scenario())
 
@@ -343,6 +367,38 @@ class M8SafetyTests(unittest.TestCase):
                 if event.data.get("action") == "Retrying browser run"
             ]
             self.assertEqual(len(retry_events), 2)
+
+        asyncio.run(scenario())
+
+    def test_unresolved_browser_run_is_not_retried(self) -> None:
+        async def scenario() -> None:
+            class UnresolvedAgent:
+                calls = 0
+
+                async def run(self, url: str, goal: str) -> RunResult:
+                    self.calls += 1
+                    return RunResult(
+                        False,
+                        "remote-run",
+                        error="connection timed out",
+                        unresolved=True,
+                    )
+
+                async def cancel(self, run_id: str) -> CancelResult:
+                    return CancelResult("UNKNOWN")
+
+            agent = UnresolvedAgent()
+            orchestrator = self.make_orchestrator(agent=agent)
+            task = await orchestrator.create_task(DEMO_REQUEST, "en")
+            task = await wait_for_planner(orchestrator, task.task_id)
+            task = await orchestrator.approve(
+                task.task_id,
+                ApproveRequest(approval_id=task.approval_id),
+            )
+
+            self.assertEqual(task.state, TaskState.COULD_NOT_FINISH)
+            self.assertEqual(agent.calls, 1)
+            self.assertEqual(task.reason, "browser_run_unresolved")
 
         asyncio.run(scenario())
 

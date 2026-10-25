@@ -79,4 +79,16 @@ describe("getApiBase", () => {
     vi.stubEnv("VITE_API_BASE_URL", "");
     expect(getApiBase()).toBe("");
   });
+
+  it("uses same-origin requests when no API origin is configured", () => {
+    vi.stubEnv("VITE_API_BASE_URL", undefined);
+    vi.stubEnv("DEV", false);
+    expect(getApiBase()).toBe("");
+  });
+
+  it("uses a configured API origin in production builds", () => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.test/");
+    vi.stubEnv("DEV", false);
+    expect(getApiBase()).toBe("https://api.example.test");
+  });
 });

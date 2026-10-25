@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { recognitionLocale, resolvedLang } from "../utils/messages.js";
+import { recognitionErrorKey } from "../utils/voice.js";
 
 function getRecognitionCtor() {
   if (typeof window === "undefined") return null;
@@ -17,6 +18,7 @@ function pickVoice(voices, lang) {
 export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [recognitionError, setRecognitionError] = useState(null);
   const [voices, setVoices] = useState([]);
   const [support, setSupport] = useState({
     recognition: false,
@@ -84,6 +86,7 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
 
   const startListening = useCallback(async () => {
     if (!enabled) return;
+    setRecognitionError(null);
     const Ctor = getRecognitionCtor();
     if (!Ctor) {
       setSupport((current) => ({ ...current, recognition: false }));
@@ -119,6 +122,7 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
       if (err === "not-allowed") {
         setSupport((current) => ({ ...current, permission: "denied" }));
       }
+      setRecognitionError(recognitionErrorKey(err));
       setListening(false);
       recognitionRef.current = null;
     };
@@ -132,13 +136,17 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
         else interim += text;
       }
       if (interim) onInterimRef.current?.(interim);
-      if (finalText) onFinalRef.current?.(finalText.trim());
+      if (finalText) {
+        setRecognitionError(null);
+        onFinalRef.current?.(finalText.trim());
+      }
     };
 
     recognitionRef.current = recognition;
     try {
       recognition.start();
     } catch {
+      setRecognitionError("micRecognitionError");
       setListening(false);
     }
   }, [enabled, language, stopListening, stopSpeech]);
@@ -154,6 +162,7 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
   return {
     listening,
     speaking,
+    recognitionError,
     support,
     voices,
     startListening,

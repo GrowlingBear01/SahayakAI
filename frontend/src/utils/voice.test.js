@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isVoiceSendCommand } from "./voice.js";
+import { isVoiceSendCommand, recognitionErrorKey } from "./voice.js";
 
 describe("voice confirmation commands", () => {
   it.each(["send", "Send it.", "submit request", "bhej do", "भेजो।", "जमा करें"])(
@@ -15,4 +15,16 @@ describe("voice confirmation commands", () => {
       expect(isVoiceSendCommand(text)).toBe(false);
     },
   );
+});
+
+describe("speech recognition errors", () => {
+  it.each([
+    ["no-speech", "micNoSpeech"],
+    ["network", "micNetworkError"],
+    ["audio-capture", "micCaptureError"],
+    ["not-allowed", "micDenied"],
+    ["unknown", "micRecognitionError"],
+  ])("maps %s to %s", (error, messageKey) => {
+    expect(recognitionErrorKey(error)).toBe(messageKey);
+  });
 });

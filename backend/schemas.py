@@ -116,11 +116,19 @@ class WebsiteSource(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
 
 
+class WebsiteMedia(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    title: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=2000)
+
+
 class WebsiteResearchOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     answer: str = Field(min_length=1, max_length=5000)
     sources: list[WebsiteSource] = Field(min_length=1, max_length=10)
+    media: list[WebsiteMedia] = Field(default_factory=list, max_length=10)
 
 
 class TaskState(StrEnum):
@@ -146,7 +154,7 @@ class Task(BaseModel):
     missing: list[str] = Field(default_factory=list)
     cancelled: bool = False
     approval_id: str | None = None
-    approval_type: Literal["start", "submit"] | None = None
+    approval_type: Literal["start", "submit", "web"] | None = None
     text: str = ""
     language: Literal["hi", "en", "auto"] = "auto"
     reported_fields: dict[str, str] | None = None
@@ -158,6 +166,7 @@ class Task(BaseModel):
     web_query: str | None = None
     web_answer: str | None = None
     web_sources: list[WebsiteSource] = Field(default_factory=list)
+    web_media: list[WebsiteMedia] = Field(default_factory=list)
     reason: str | None = None
     needs_human_kind: Literal["captcha", "otp", "login", "blocked"] | None = None
     human_action_url: str | None = None

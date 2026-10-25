@@ -16,10 +16,15 @@ Then open the URL Vite prints (usually `http://localhost:5173`).
 Copy `.env.example` to `.env` if you need to point at a specific API origin:
 
 ```
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=
 ```
 
-In local `npm run dev`, an empty `VITE_API_BASE_URL` uses the Vite proxy (`/health`, `/flows`, `/tasks` → `http://localhost:8000`) so EventSource can run same-origin. That is not a mock backend.
+With no `VITE_API_BASE_URL`, the frontend uses same-origin API requests. Local
+`npm run dev` proxies `/health`, `/flows`, and `/tasks` to
+`VITE_BACKEND_URL` (default `http://localhost:8000`) so EventSource runs
+same-origin. For a separately hosted frontend, set `VITE_API_BASE_URL` to the
+backend's HTTPS origin during the production build; production builds do not
+fall back to the visitor's `localhost`.
 
 Start Owner A’s API separately (from the repository root):
 
@@ -36,7 +41,7 @@ npm test
 npm run build
 ```
 
-`npm run lint` currently runs the production build (no ESLint package is installed).
+`npm run lint` runs ESLint independently of the production build.
 
 ## Voice
 

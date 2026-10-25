@@ -8,6 +8,7 @@ from backend.planner import (
     GeminiPlanner,
     PlannerConfigurationError,
     PlannerOutputError,
+    PlannerRateLimitError,
     PlannerResult,
 )
 
@@ -60,7 +61,11 @@ class PlannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(body["store"])
         self.assertIn("Never guess", body["input"])
         self.assertIn("web_discovery", body["input"])
-        self.assertIn("never invent a URL", body["input"])
+        self.assertIn("Never invent a URL", body["input"])
+        self.assertIn("publicly available music or videos", body["input"])
+        self.assertIn("preserve that exact link", body["input"])
+        self.assertIn("choose YouTube", body["input"])
+        self.assertIn("web_query", body["input"])
         self.assertNotIn("test-key", str(requests[0].url))
 
     async def test_invalid_json_is_retried_once(self) -> None:
@@ -140,6 +145,27 @@ class PlannerTests(unittest.IsolatedAsyncioTestCase):
         planner = GeminiPlanner("", "gemini-3.8-flash")
         with self.assertRaisesRegex(PlannerConfigurationError, "LLM_API_KEY"):
             await planner.plan("Fill the demo form", "en", [], {})
+
+    async def test_rate_limit_is_reported_without_leaking_provider_response(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                429,
+                json={"error": {"message": "private quota response"}},
+            )
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as client:
+            planner = GeminiPlanner("test-key", "gemini-3.8-flash", client=client)
+            with self.assertRaises(PlannerRateLimitError) as error:
+                await planner.plan(
+                    "Find schemes listed on myScheme",
+                    "en",
+                    list(load_flows().values()),
+                    {},
+                )
+
+        self.assertNotIn("private quota response", str(error.exception))
 
 
 if __name__ == "__main__":

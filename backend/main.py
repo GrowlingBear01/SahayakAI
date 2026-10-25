@@ -1,8 +1,10 @@
 import json
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from .config import settings
 from .flow_loader import load_flows
 from .orchestrator import orchestrator
 from .schemas import (
@@ -17,9 +19,40 @@ from .schemas import (
 app = FastAPI(title="SahayakAI")
 
 
+def configure_cors(application: FastAPI, allowed_origins: tuple[str, ...]) -> None:
+    if "*" in allowed_origins:
+        raise ValueError("CORS_ALLOWED_ORIGINS must list exact trusted origins")
+    if allowed_origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(allowed_origins),
+            allow_credentials=False,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type"],
+        )
+
+
+configure_cors(app, settings.cors_allowed_origins)
+
+
 @app.get("/health")
 async def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+@app.get("/ready")
+async def readiness(response: Response) -> dict[str, object]:
+    checks = {
+        "llm_provider": settings.llm_provider == "gemini",
+        "llm_api_key": bool(settings.llm_api_key),
+        "tinyfish_api_key": (
+            settings.browser_agent != "tinyfish" or bool(settings.tinyfish_api_key)
+        ),
+    }
+    ready = all(checks.values())
+    if not ready:
+        response.status_code = 503
+    return {"ok": ready, "checks": checks}
 
 
 @app.post("/tasks")
@@ -151,6 +184,8 @@ async def stop_task(task_id: str) -> dict[str, object]:
         "schemes": [scheme.model_dump() for scheme in task.schemes],
         "web_answer": task.web_answer,
         "web_sources": [source.model_dump() for source in task.web_sources],
+        "web_media": [media.model_dump() for media in task.web_media],
+        "web_media": [media.model_dump() for media in task.web_media],
         "selected_site": next(
             (
                 candidate.model_dump()

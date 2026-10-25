@@ -1,13 +1,20 @@
 import unittest
 import time
+from dataclasses import replace
 from uuid import uuid4
 from unittest.mock import patch
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.main import app
+from backend.config import settings
+from backend.main import app, configure_cors
 from backend.orchestrator import Orchestrator
-from backend.planner import GeminiPlanner, PlannerResult
+from backend.planner import (
+    GeminiPlanner,
+    PlannerRateLimitError,
+    PlannerResult,
+)
 from backend.schemas import Task, TaskState
 from backend.task_store import TaskStore
 from backend.tests.support import CompleteDemoPlanner, DEMO_REQUEST
@@ -72,6 +79,61 @@ class ApiTests(unittest.TestCase):
         self.assertIn("mock_scheme_application", flow_ids)
         self.assertIn("myscheme_discovery", flow_ids)
         self.assertIn("web_discovery", flow_ids)
+
+    def test_readiness_checks_required_provider_configuration(self) -> None:
+        with patch(
+            "backend.main.settings",
+            replace(settings, llm_provider="gemini", llm_api_key="", browser_agent="mock"),
+        ):
+            not_ready = self.client.get("/ready")
+        self.assertEqual(not_ready.status_code, 503)
+        self.assertFalse(not_ready.json()["ok"])
+        self.assertFalse(not_ready.json()["checks"]["llm_api_key"])
+
+        with patch(
+            "backend.main.settings",
+            replace(
+                settings,
+                llm_provider="gemini",
+                llm_api_key="test-key",
+                browser_agent="mock",
+            ),
+        ):
+            ready = self.client.get("/ready")
+        self.assertEqual(ready.status_code, 200)
+        self.assertTrue(ready.json()["ok"])
+
+    def test_cors_allows_only_configured_origins(self) -> None:
+        cors_app = FastAPI()
+        configure_cors(cors_app, ("https://frontend.example",))
+
+        @cors_app.get("/health")
+        async def cors_health():
+            return {"ok": True}
+
+        with TestClient(cors_app) as client:
+            allowed = client.options(
+                "/health",
+                headers={
+                    "Origin": "https://frontend.example",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+            denied = client.options(
+                "/health",
+                headers={
+                    "Origin": "https://attacker.example",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+        self.assertEqual(
+            allowed.headers["access-control-allow-origin"],
+            "https://frontend.example",
+        )
+        self.assertNotIn("access-control-allow-origin", denied.headers)
+        with self.assertRaisesRegex(ValueError, "exact trusted origins"):
+            configure_cors(FastAPI(), ("*",))
+
 
     def test_web_flow_selection_is_preserved_for_site_discovery(self) -> None:
         created = self.client.post(
@@ -171,6 +233,27 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(task["state"], TaskState.COULD_NOT_FINISH.value)
         self.assertIn("LLM_API_KEY", task["error"])
+
+    def test_gemini_quota_error_is_actionable_and_localized(self) -> None:
+        class RateLimitedPlanner:
+            async def plan(self, transcript, language, flows, values):
+                raise PlannerRateLimitError("quota reached")
+
+        orchestrator = Orchestrator(TaskStore(), planner=RateLimitedPlanner())
+        with patch("backend.main.orchestrator", orchestrator):
+            created = self.client.post(
+                "/tasks",
+                json={
+                    "text": "Find schemes listed on myScheme",
+                    "lang": "en",
+                },
+            )
+            task = self.wait_for_planner(created.json()["task_id"])
+
+        self.assertEqual(task["state"], TaskState.COULD_NOT_FINISH.value)
+        self.assertEqual(task["reason"], "planner_rate_limited")
+        self.assertIn("quota has been reached", task["error"])
+        self.assertIn("कोटा", task["error_hi"])
 
     def test_approval_card_marks_reported_field_mismatch(self) -> None:
         orchestrator = Orchestrator(TaskStore())

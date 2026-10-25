@@ -134,6 +134,84 @@ class TinyFishAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("cancelled", result.error.lower())
         self.assertGreaterEqual(calls, 3)
 
+    async def test_poll_http_error_cancels_and_confirms_terminal_status(self) -> None:
+        calls: list[str] = []
+        poll_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal poll_count
+            calls.append(request.url.path)
+            if request.url.path.endswith("/run-async"):
+                return httpx.Response(200, json={"run_id": "run-503"})
+            if request.url.path.endswith("/cancel"):
+                return httpx.Response(200, json={"status": "CANCELLED"})
+            poll_count += 1
+            if poll_count == 1:
+                return httpx.Response(503, json={"error": "temporary"})
+            return httpx.Response(200, json={"status": "CANCELLED"})
+
+        client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://agent.test"
+        )
+        agent = TinyFishAgent(
+            "test-key",
+            base_url="https://agent.test",
+            poll_interval=0,
+            client=client,
+        )
+        result = await agent.run("https://demo.example/form", "fill")
+        await client.aclose()
+
+        self.assertEqual(result.run_id, "run-503")
+        self.assertFalse(result.unresolved)
+        self.assertEqual(
+            calls,
+            [
+                "/v1/automation/run-async",
+                "/v1/runs/run-503",
+                "/v1/runs/run-503/cancel",
+                "/v1/runs/run-503",
+            ],
+        )
+
+    async def test_poll_transport_error_stays_unresolved_if_run_remains_active(self) -> None:
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            if request.url.path.endswith("/run-async"):
+                return httpx.Response(200, json={"run_id": "run-active"})
+            if request.url.path.endswith("/cancel"):
+                return httpx.Response(200, json={"status": "UNKNOWN"})
+            if calls.count("/v1/runs/run-active") == 1:
+                raise httpx.ConnectError("poll connection lost")
+            return httpx.Response(200, json={"status": "RUNNING"})
+
+        client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://agent.test"
+        )
+        agent = TinyFishAgent(
+            "test-key",
+            base_url="https://agent.test",
+            poll_interval=0,
+            client=client,
+        )
+        result = await agent.run("https://demo.example/form", "fill")
+        await client.aclose()
+
+        self.assertEqual(result.run_id, "run-active")
+        self.assertTrue(result.unresolved)
+        self.assertIn("status could not be checked", result.error)
+        self.assertEqual(
+            calls,
+            [
+                "/v1/automation/run-async",
+                "/v1/runs/run-active",
+                "/v1/runs/run-active/cancel",
+                "/v1/runs/run-active",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

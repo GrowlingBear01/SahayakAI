@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from backend.agents.base import CancelResult, RunResult
+from backend.agents.mock_agent import MockBrowserAgent
 from backend.orchestrator import Orchestrator
 from backend.planner import PlannerResult
 from backend.schemas import ApproveRequest, TaskState
@@ -133,6 +134,32 @@ class M9DiscoveryTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_mock_agent_reports_live_browsing_requirement(self) -> None:
+        async def scenario() -> None:
+            store = MockStore(Path(self.temp_dir.name) / "mock.db")
+            orchestrator = Orchestrator(
+                TaskStore(),
+                agent=MockBrowserAgent(store),
+                submission_store=store,
+                planner=DiscoveryPlanner(),
+            )
+            task = await orchestrator.create_task("Find schemes", "en")
+            task = await wait_for_planner(orchestrator, task.task_id)
+            task = await orchestrator.approve(
+                task.task_id,
+                ApproveRequest(approval_id=task.approval_id),
+            )
+
+            self.assertEqual(task.state, TaskState.COULD_NOT_FINISH)
+            self.assertEqual(task.reason, "browser_agent_not_configured")
+            self.assertIn("BROWSER_AGENT=tinyfish", task.error)
+            self.assertIn("TINYFISH_API_KEY", task.error)
+            self.assertIn("BROWSER_AGENT=tinyfish", task.error_hi)
+            final_event = orchestrator._history[task.task_id][-1]
+            self.assertTrue(final_event.data["offer_demo"])
+
+        asyncio.run(scenario())
+
     def test_unparseable_result_is_not_reported_as_done(self) -> None:
         async def scenario() -> None:
             agent = DiscoveryAgent(
@@ -149,6 +176,31 @@ class M9DiscoveryTests(unittest.TestCase):
             self.assertEqual(task.state, TaskState.OUTCOME_UNKNOWN)
             self.assertNotEqual(task.state, TaskState.DONE)
             self.assertTrue(orchestrator._history[task.task_id][-1].data["offer_demo"])
+
+        asyncio.run(scenario())
+
+    def test_unresolved_remote_discovery_run_is_not_retried(self) -> None:
+        async def scenario() -> None:
+            agent = DiscoveryAgent(
+                RunResult(
+                    False,
+                    "unknown-run",
+                    error="connection timed out",
+                    unresolved=True,
+                )
+            )
+            orchestrator = self.make_orchestrator(agent)
+            task = await orchestrator.create_task("Find schemes", "en")
+            task = await wait_for_planner(orchestrator, task.task_id)
+            task = await orchestrator.approve(
+                task.task_id,
+                ApproveRequest(approval_id=task.approval_id),
+            )
+
+            self.assertEqual(task.state, TaskState.OUTCOME_UNKNOWN)
+            self.assertEqual(task.reason, "browser_run_unresolved")
+            self.assertIn("may still be active", task.error)
+            self.assertEqual(len(agent.calls), 1)
 
         asyncio.run(scenario())
 

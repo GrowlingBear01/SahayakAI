@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { coerceEdits, fieldsWithKeys } from "../utils/approval.js";
 import { t } from "../utils/messages.js";
 
@@ -13,7 +13,10 @@ export default function ApprovalCard({
   onCancel,
 }) {
   const [editing, setEditing] = useState(false);
-  const fields = fieldsWithKeys(approval, taskValues);
+  const fields = useMemo(
+    () => fieldsWithKeys(approval, taskValues),
+    [approval, taskValues],
+  );
   const [draft, setDraft] = useState({});
 
   useEffect(() => {
@@ -21,7 +24,7 @@ export default function ApprovalCard({
     const next = {};
     for (const field of fields) next[field.key] = field.value ?? "";
     setDraft(next);
-  }, [approval?.approval_id]);
+  }, [approval?.approval_id, fields]);
 
   if (!approval) return null;
   const submit = approval.approval_type === "submit";

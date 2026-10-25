@@ -49,6 +49,10 @@ class PlannerServiceError(PlannerError):
     pass
 
 
+class PlannerRateLimitError(PlannerServiceError):
+    pass
+
+
 class GeminiPlanner:
     def __init__(
         self,
@@ -119,9 +123,16 @@ class GeminiPlanner:
             "details. Preserve previously collected values unless the user explicitly "
             "corrects them. Normalize Devanagari digits to ASCII. Do not create URLs, "
             "browser goals, or fields. Use web_discovery for read-only questions about "
-            "a named public website or service not covered by a more specific discovery "
-            "flow. Extract the website or service name into its site_name field; never "
-            "invent a URL. Ask for missing information in both languages. "
+            "a named public website or service, and for searches for publicly available "
+            "music or videos. For public song or video searches, choose YouTube as "
+            "site_name and put the user's requested artist, title, or topic in "
+            "web_query. If the user provides a YouTube share link, preserve that "
+            "exact link in web_query. For other public-site requests, extract a "
+            "named website or service into site_name and the requested "
+            "question/search into web_query. "
+            "Never invent a URL. Do not use web_discovery for signing in, purchases, "
+            "messages, form submissions, or other state-changing actions. Ask for "
+            "missing information in both languages. "
             "Return only a JSON object with exactly these keys: flow_id, values, "
             "missing, language, clarifying_question_en, clarifying_question_hi. "
             "language must be 'hi' or 'en'. Return every value as a string, including "
@@ -171,7 +182,7 @@ class GeminiPlanner:
                 )
             try:
                 if self.client is None:
-                    async with httpx.AsyncClient(timeout=30.0) as client:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
                         response = await client.post(
                             endpoint,
                             headers={"x-goog-api-key": self.api_key},
@@ -185,6 +196,11 @@ class GeminiPlanner:
                     )
                 response.raise_for_status()
             except httpx.HTTPStatusError as error:
+                if error.response.status_code == 429:
+                    logger.warning("Gemini planner rate limit reached")
+                    raise PlannerRateLimitError(
+                        "Gemini planner request quota has been reached."
+                    ) from None
                 logger.warning(
                     "Gemini planner returned HTTP %s",
                     error.response.status_code,

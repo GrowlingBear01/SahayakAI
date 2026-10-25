@@ -12,6 +12,7 @@ class RunResult:
     streaming_url: str | None = None
     error: str | None = None
     needs_human: str | None = None
+    unresolved: bool = False
 
 
 @dataclass(frozen=True)

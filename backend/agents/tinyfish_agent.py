@@ -46,6 +46,7 @@ class TinyFishAgent(BrowserAgent):
         | None = None,
     ) -> RunResult:
         client = await self._get_client()
+        run_id = ""
         try:
             response = await client.post(
                 f"{self.base_url}/v1/automation/run-async",
@@ -53,10 +54,36 @@ class TinyFishAgent(BrowserAgent):
                 json={"url": url, "goal": goal},
             )
             if response.is_error:
-                return self._api_error(response, "")
-            run_id = response.json().get("run_id")
+                result = self._api_error(response, "")
+                if response.status_code >= 500:
+                    return RunResult(
+                        result.ok,
+                        result.run_id,
+                        reported_fields=result.reported_fields,
+                        final_text=result.final_text,
+                        screenshot_url=result.screenshot_url,
+                        streaming_url=result.streaming_url,
+                        error=result.error,
+                        needs_human=result.needs_human,
+                        unresolved=True,
+                    )
+                return result
+            body = response.json()
+            if not isinstance(body, dict):
+                return RunResult(
+                    False,
+                    "",
+                    error="TinyFish returned an invalid run response",
+                    unresolved=True,
+                )
+            run_id = body.get("run_id")
             if not isinstance(run_id, str) or not run_id:
-                return RunResult(False, "", error="TinyFish did not return a run_id")
+                return RunResult(
+                    False,
+                    "",
+                    error="TinyFish did not return a run_id",
+                    unresolved=True,
+                )
             if on_run_started is not None:
                 on_run_started(run_id)
 
@@ -65,12 +92,26 @@ class TinyFishAgent(BrowserAgent):
             last_progress: tuple[str | None, str | None] = (None, None)
             while asyncio.get_running_loop().time() < deadline:
                 await asyncio.sleep(self.poll_interval)
-                status_response = await client.get(
-                    f"{self.base_url}/v1/runs/{run_id}", headers=self.headers
-                )
+                try:
+                    status_response = await client.get(
+                        f"{self.base_url}/v1/runs/{run_id}", headers=self.headers
+                    )
+                except httpx.HTTPError:
+                    return await self._cancel_and_reconcile(
+                        client, run_id, "TinyFish status could not be checked"
+                    )
                 if status_response.is_error:
-                    return self._api_error(status_response, run_id)
-                latest = status_response.json()
+                    return await self._cancel_and_reconcile(
+                        client, run_id, "TinyFish status check failed"
+                    )
+                try:
+                    latest = status_response.json()
+                    if not isinstance(latest, dict):
+                        raise ValueError("invalid status")
+                except ValueError:
+                    return await self._cancel_and_reconcile(
+                        client, run_id, "TinyFish returned an invalid status response"
+                    )
                 progress = self._progress(latest)
                 if on_progress is not None and progress != last_progress:
                     await on_progress(*progress)
@@ -87,17 +128,54 @@ class TinyFishAgent(BrowserAgent):
                     False,
                     run_id,
                     error=f"watchdog expired; cancellation status: {cancel.status}",
+                    unresolved=True,
                 )
-            final = final_response.json()
+            try:
+                final = final_response.json()
+                if not isinstance(final, dict):
+                    raise ValueError("invalid status")
+            except ValueError:
+                return RunResult(
+                    False,
+                    run_id,
+                    error="watchdog expired; final TinyFish status was invalid",
+                    unresolved=True,
+                )
             if final.get("status") in TERMINAL_STATUSES:
                 return self._run_result(run_id, final)
             return RunResult(
                 False,
                 run_id,
                 error=f"watchdog expired; cancellation status: {cancel.status}",
+                unresolved=True,
             )
         except (httpx.HTTPError, ValueError, KeyError) as error:
-            return RunResult(False, "", error=f"TinyFish request failed: {error}")
+            if run_id:
+                return await self._cancel_and_reconcile(
+                    client, run_id, f"TinyFish run status became uncertain ({type(error).__name__})"
+                )
+            return RunResult(
+                False,
+                "",
+                error=f"TinyFish request failed: {type(error).__name__}",
+                unresolved=True,
+            )
+
+    async def _cancel_and_reconcile(
+        self, client: httpx.AsyncClient, run_id: str, reason: str
+    ) -> RunResult:
+        await self.cancel(run_id)
+        try:
+            response = await client.get(
+                f"{self.base_url}/v1/runs/{run_id}", headers=self.headers
+            )
+            if not response.is_error:
+                run = response.json()
+                if isinstance(run, dict) and run.get("status") in TERMINAL_STATUSES:
+                    return self._run_result(run_id, run)
+        except (httpx.HTTPError, ValueError):
+            pass
+        return RunResult(False, run_id, error=reason, unresolved=True)
 
     async def cancel(self, run_id: str) -> CancelResult:
         client = await self._get_client()
@@ -109,11 +187,16 @@ class TinyFishAgent(BrowserAgent):
                 error = self._error_message(response)
                 return CancelResult("FAILED", error)
             body = response.json()
+            if not isinstance(body, dict):
+                return CancelResult("UNKNOWN", "Invalid cancellation response")
             return CancelResult(
                 str(body.get("status", "UNKNOWN")), body.get("message")
             )
-        except httpx.HTTPError as error:
-            return CancelResult("UNKNOWN", f"Cancellation request failed: {error}")
+        except (httpx.HTTPError, ValueError) as error:
+            return CancelResult(
+                "UNKNOWN",
+                f"Cancellation request failed: {type(error).__name__}",
+            )
 
     async def aclose(self) -> None:
         if self._owned_client is not None:

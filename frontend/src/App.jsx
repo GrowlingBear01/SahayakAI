@@ -31,6 +31,7 @@ export default function App() {
     connection,
   } = assistant;
   const taskActive = isActiveTask(taskState);
+  const browserActive = assistant.browserStarted;
   const autoHint = browserPrefersHindi() ? "autoLangHi" : "autoLangEn";
   const webEventData =
     assistant.lastEvent?.task_id === assistant.taskId
@@ -80,9 +81,6 @@ export default function App() {
             </div>
           ) : null}
           <VoiceOrb state={assistant.orbState} />
-          <p className="muted" style={{ maxWidth: 540 }}>
-            {t("welcome", language)}
-          </p>
           <LanguageSelector language={language} onChange={assistant.setLanguage} />
           {language === "auto" ? <p className="muted">{t(autoHint, language)}</p> : null}
           <p className="muted">{t("supportedLangs", language)}</p>
@@ -94,7 +92,6 @@ export default function App() {
           ) : null}
 
           <Transcript
-            language={language}
             userText={assistant.userUtterance || assistant.transcript}
             assistantText={assistant.assistantText}
             listening={voice.listening}
@@ -131,6 +128,11 @@ export default function App() {
             flow={flow}
             webPhase={webPhase}
           />
+          {assistant.typed.trim() ? (
+            <p className="muted" role="note">
+              {t("externalProcessingNotice", language)}
+            </p>
+          ) : null}
           {flow === "web" ? (
             <p className="muted">{t("webModeNotice", language)}</p>
           ) : null}
@@ -159,7 +161,7 @@ export default function App() {
             language={language}
             url={assistant.streamingUrl}
             action={assistant.liveBrowserAction}
-            active={taskActive || Boolean(assistant.streamingUrl)}
+            active={browserActive}
           />
           <ApprovalCard
             language={language}

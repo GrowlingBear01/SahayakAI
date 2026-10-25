@@ -1,4 +1,3 @@
-const DEFAULT_BASE = "http://localhost:8000";
 const APPROVAL_TIMEOUT_MS = 150000;
 
 export class ApiError extends Error {
@@ -15,8 +14,7 @@ export function getApiBase() {
   const raw = import.meta.env.VITE_API_BASE_URL;
   if (raw === "") return "";
   if (raw) return String(raw).replace(/\/$/, "");
-  if (import.meta.env.DEV) return "";
-  return DEFAULT_BASE;
+  return "";
 }
 
 export function eventsUrl(taskId) {

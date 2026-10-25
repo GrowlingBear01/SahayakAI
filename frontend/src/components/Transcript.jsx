@@ -1,4 +1,4 @@
-export default function Transcript({ userText, assistantText, listening, language }) {
+export default function Transcript({ userText, assistantText, listening }) {
   if (!userText && !assistantText && !listening) return null;
   return (
     <div className="transcript" aria-live="polite">

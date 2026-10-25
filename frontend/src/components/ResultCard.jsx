@@ -21,6 +21,14 @@ const HUMAN_ACTION_LABEL = {
   blocked: "needsHumanBlocked",
 };
 
+function getSelectedHost(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
 export default function ResultCard({ language, result, onSwitchDemo }) {
   if (!result) return null;
   const titleKey = TITLES[result.state] || "couldNotFinish";
@@ -34,13 +42,9 @@ export default function ResultCard({ language, result, onSwitchDemo }) {
   const isWebResearch = result.flow_id === "web_discovery";
   const schemes = Array.isArray(result.schemes) ? result.schemes : [];
   const webSources = Array.isArray(result.web_sources) ? result.web_sources : [];
+  const webMedia = Array.isArray(result.web_media) ? result.web_media : [];
   const selectedSite = result.selected_site;
-  let selectedHost = "";
-  try {
-    selectedHost = new URL(selectedSite?.url).hostname;
-  } catch {
-    selectedHost = "";
-  }
+  const selectedHost = selectedSite?.url ? getSelectedHost(selectedSite.url) : "";
 
   return (
     <section className="panel card result" data-state={result.state} aria-live="polite">
@@ -74,6 +78,19 @@ export default function ResultCard({ language, result, onSwitchDemo }) {
                   </a>
                 </p>
               ))}
+            </div>
+          ) : null}
+          {webMedia.length ? (
+            <div className="scheme-results">
+              <h3>{t("publicMedia", language)}</h3>
+              {webMedia.map((media) => (
+                <p key={media.url}>
+                  <a href={media.url} target="_blank" rel="noreferrer">
+                    {media.title}
+                  </a>
+                </p>
+              ))}
+              <p className="muted">{t("mediaPlaybackNotice", language)}</p>
             </div>
           ) : null}
         </>
