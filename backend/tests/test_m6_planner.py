@@ -33,7 +33,9 @@ class QueuePlanner:
         self.results = list(results)
         self.calls: list[tuple[str, str, dict[str, str | int]]] = []
 
-    async def plan(self, transcript, language, flows, values) -> PlannerResult:
+    async def plan(
+        self, transcript, language, flows, values, conversation_history=()
+    ) -> PlannerResult:
         self.calls.append((transcript, language, dict(values)))
         return self.results.pop(0)
 
@@ -70,7 +72,7 @@ class M6PlannerTests(unittest.TestCase):
             )
             orchestrator = self.create_orchestrator(planner)
             task = await orchestrator.create_task(
-                "डेमो फ़ॉर्म सावित्री देवी के लिए भरें", "auto"
+                "सावित्री देवी के आवेदन में मदद चाहिए", "auto"
             )
             task = await wait_for_planner(orchestrator, task.task_id)
 
@@ -104,7 +106,7 @@ class M6PlannerTests(unittest.TestCase):
                 plan_result({}, ["full_name", "age", "state", "phone"])
             )
             orchestrator = self.create_orchestrator(planner)
-            task = await orchestrator.create_task("Fill the demo form", "en")
+            task = await orchestrator.create_task("Help me with an application", "en")
             task = await wait_for_planner(orchestrator, task.task_id)
 
             self.assertEqual(task.state, TaskState.NEEDS_INFO)
@@ -113,6 +115,96 @@ class M6PlannerTests(unittest.TestCase):
                 set(task.missing), {"full_name", "age", "state", "phone"}
             )
             self.assertIsNone(task.approval_id)
+
+        asyncio.run(scenario())
+
+    def test_demo_form_uses_local_planner_and_extracts_explicit_fields(self) -> None:
+        async def scenario() -> None:
+            planner = QueuePlanner()
+            orchestrator = self.create_orchestrator(planner)
+            task = await orchestrator.create_task(
+                "Please fill the demo form: full name Savitri Devi, age 72, "
+                "state Delhi, phone 9876543210",
+                "en",
+            )
+            task = await wait_for_planner(orchestrator, task.task_id)
+
+            self.assertEqual(task.state, TaskState.WAITING_FOR_APPROVAL)
+            self.assertEqual(
+                task.values,
+                {
+                    "full_name": "Savitri Devi",
+                    "age": 72,
+                    "state": "Delhi",
+                    "phone": "9876543210",
+                },
+            )
+            self.assertEqual(planner.calls, [])
+
+            task = await orchestrator.create_task(
+                "Fill the demo form", "en", requested_flow="demo"
+            )
+            task = await wait_for_planner(orchestrator, task.task_id)
+            self.assertEqual(task.state, TaskState.NEEDS_INFO)
+            self.assertEqual(
+                set(task.missing), {"full_name", "age", "state", "phone"}
+            )
+            self.assertEqual(planner.calls, [])
+
+        asyncio.run(scenario())
+
+    def test_demo_form_accepts_ordered_answer_without_calling_llm(self) -> None:
+        async def scenario() -> None:
+            planner = QueuePlanner()
+            orchestrator = self.create_orchestrator(planner)
+            task = await orchestrator.create_task(
+                "Fill the demo form", "en", requested_flow="demo"
+            )
+            task = await wait_for_planner(orchestrator, task.task_id)
+            self.assertEqual(task.state, TaskState.NEEDS_INFO)
+
+            task = await orchestrator.answer(
+                task.task_id, "Savitri Devi, 72, Delhi, 9876543210"
+            )
+            task = await wait_for_planner(orchestrator, task.task_id)
+
+            self.assertEqual(task.state, TaskState.WAITING_FOR_APPROVAL)
+            self.assertEqual(
+                task.values,
+                {
+                    "full_name": "Savitri Devi",
+                    "age": 72,
+                    "state": "Delhi",
+                    "phone": "9876543210",
+                },
+            )
+            self.assertEqual(planner.calls, [])
+
+        asyncio.run(scenario())
+
+    def test_invalid_ordered_demo_details_are_not_saved_as_field_values(self) -> None:
+        async def scenario() -> None:
+            planner = QueuePlanner()
+            orchestrator = self.create_orchestrator(planner)
+            task = await orchestrator.create_task(
+                "Fill the demo form", "en", requested_flow="demo"
+            )
+            task = await wait_for_planner(orchestrator, task.task_id)
+
+            task = await orchestrator.answer(
+                task.task_id, "hey, hej, sdfdjhsl. sdfsfd, sfd"
+            )
+            task = await wait_for_planner(orchestrator, task.task_id)
+
+            self.assertEqual(task.state, TaskState.NEEDS_INFO)
+            self.assertEqual(task.values, {})
+            self.assertEqual(
+                set(task.missing), {"full_name", "age", "state", "phone"}
+            )
+            self.assertIn("in this order", task.clarifying_question_en)
+            self.assertIn("10 digits", task.clarifying_question_en)
+            self.assertIn("Example:", task.clarifying_question_en)
+            self.assertEqual(planner.calls, [])
 
         asyncio.run(scenario())
 
@@ -160,7 +252,7 @@ class M6PlannerTests(unittest.TestCase):
 
             self.assertEqual(task.state, TaskState.NEEDS_INFO)
             self.assertIsNone(task.flow_id)
-            self.assertIn("not available", task.clarifying_question_en)
+            self.assertIn("can't perform that action", task.clarifying_question_en)
             self.assertIsNone(task.approval_id)
 
         asyncio.run(scenario())

@@ -92,13 +92,17 @@ class WaitingPlanner:
     def __init__(self) -> None:
         self.started = asyncio.Event()
 
-    async def plan(self, transcript, language, flows, values) -> PlannerResult:
+    async def plan(
+        self, transcript, language, flows, values, conversation_history=()
+    ) -> PlannerResult:
         self.started.set()
         await asyncio.Event().wait()
 
 
 class MissingInfoPlanner:
-    async def plan(self, transcript, language, flows, values) -> PlannerResult:
+    async def plan(
+        self, transcript, language, flows, values, conversation_history=()
+    ) -> PlannerResult:
         return PlannerResult(
             flow_id=None,
             values={},

@@ -1,3 +1,10 @@
+export const VOICE_SILENCE_TIMEOUT_MS = 3000;
+
+export function resetVoiceSilenceTimer(timerRef, onSilence) {
+  clearTimeout(timerRef.current);
+  timerRef.current = setTimeout(onSilence, VOICE_SILENCE_TIMEOUT_MS);
+}
+
 export function isVoiceSendCommand(text) {
   const value = String(text || "")
     .normalize("NFKC")

@@ -24,6 +24,10 @@ VALID_OUTPUT = {
 }
 
 
+def candidate_response(text: str) -> dict:
+    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+
+
 class WebsiteSearchTests(unittest.IsolatedAsyncioTestCase):
     async def test_uses_gemini_google_search_grounding_and_validates_output(self) -> None:
         requests: list[httpx.Request] = []
@@ -32,20 +36,7 @@ class WebsiteSearchTests(unittest.IsolatedAsyncioTestCase):
             requests.append(request)
             return httpx.Response(
                 200,
-                json={
-                    "status": "completed",
-                    "steps": [
-                        {
-                            "type": "model_output",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": json.dumps(VALID_OUTPUT),
-                                }
-                            ],
-                        }
-                    ],
-                },
+                json=candidate_response(json.dumps(VALID_OUTPUT)),
             )
 
         async with httpx.AsyncClient(
@@ -59,14 +50,19 @@ class WebsiteSearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             result, WebsiteResolutionOutput.model_validate(VALID_OUTPUT)
         )
-        self.assertEqual(requests[0].url.path, "/v1beta/interactions")
+        self.assertEqual(
+            requests[0].url.path,
+            "/v1beta/models/gemini-3.8-flash:generateContent",
+        )
         self.assertEqual(requests[0].headers["x-goog-api-key"], "test-key")
         body = json.loads(requests[0].content)
-        self.assertEqual(body["tools"], [{"type": "google_search"}])
-        self.assertEqual(body["response_format"]["mime_type"], "application/json")
-        self.assertFalse(body["store"])
-        self.assertIn("untrusted data", body["input"])
-        self.assertIn("National Scholarship Portal", body["input"])
+        self.assertEqual(body["tools"], [{"google_search": {}}])
+        self.assertEqual(
+            body["generationConfig"]["responseMimeType"], "application/json"
+        )
+        prompt = body["contents"][0]["parts"][0]["text"]
+        self.assertIn("untrusted data", prompt)
+        self.assertIn("National Scholarship Portal", prompt)
 
     async def test_missing_key_fails_without_request(self) -> None:
         search = GeminiWebsiteSearch("", "gemini-3.8-flash")
@@ -79,15 +75,7 @@ class WebsiteSearchTests(unittest.IsolatedAsyncioTestCase):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 200,
-                json={
-                    "status": "completed",
-                    "steps": [
-                        {
-                            "type": "model_output",
-                            "content": [{"type": "text", "text": "not JSON"}],
-                        }
-                    ],
-                },
+                json=candidate_response("not JSON"),
             )
 
         async with httpx.AsyncClient(

@@ -13,6 +13,7 @@ import httpx
 from .agents.base import BrowserAgent, RunResult
 from .agents.factory import create_browser_agent
 from .agents.mock_agent import MockBrowserAgent
+from .agents.tinyfish_agent import TinyFishAgent
 from .config import settings
 from .flow_loader import load_flows
 from .planner import (
@@ -26,6 +27,7 @@ from .planner import (
 )
 from .schemas import (
     ApproveRequest,
+    ConversationTurn,
     DiscoveryOutput,
     DiscoveryScheme,
     FieldType,
@@ -93,6 +95,7 @@ class Orchestrator:
         self._submission_runs: set[str] = set()
         self._planner_runs: dict[str, asyncio.Task[None]] = {}
         self._active_runs: dict[str, str] = {}
+        self._active_agents: dict[str, BrowserAgent] = {}
         self._submission_tokens: dict[str, str] = {}
 
     async def create_task(
@@ -100,12 +103,14 @@ class Orchestrator:
         text: str,
         language: str,
         requested_flow: str = "auto",
+        conversation_history: list[ConversationTurn] | None = None,
     ) -> Task:
         task = Task(
             task_id=str(uuid4()),
             text=text,
             language=language,
             requested_flow=requested_flow,
+            conversation_history=conversation_history or [],
         )
         self.store.create(task)
         await self._emit(
@@ -127,30 +132,88 @@ class Orchestrator:
             if task.state != TaskState.NEEDS_INFO:
                 raise ValueError("task is not waiting for more information")
             if task.flow_id == "web_discovery" and task.web_phase == "site_name":
-                flow = self.flows["web_discovery"]
-                try:
-                    site_name = str(
-                        self._validate_field_value(flow.fields[0], text.strip())
+                if task.requested_flow == "web":
+                    site_url = self._explicit_public_site_url(text)
+                    if site_url is None:
+                        raise ValueError(
+                            "provide a valid public HTTPS website address"
+                        )
+                    host = urlsplit(site_url).hostname or site_url
+                    candidate = WebsiteCandidate(
+                        name=host,
+                        url=site_url,
+                        reason="URL provided by you; ownership is not independently verified.",
+                        confidence="low",
                     )
-                except ValueError as error:
-                    raise ValueError("provide a valid website or service name") from error
-                task.values = {"site_name": site_name}
-                task.web_phase = None
-                task.state = TaskState.WORKING
-                task.text = f"{task.text}\nWebsite or service: {site_name}".strip()
-                task.clarifying_question_en = None
-                task.clarifying_question_hi = None
-                self.store.replace(task)
-                event_messages = (
-                    f"Looking for the official public website for {site_name}.",
-                    f"{site_name} की आधिकारिक सार्वजनिक वेबसाइट खोज रहा हूँ।",
-                )
-                event_data = {
-                    "action": "Finding the likely official site",
-                    "streaming_url": None,
-                    "site_name": site_name,
-                }
-                web_action = "resolve"
+                    task.values = {"site_name": host}
+                    task.selected_site_url = site_url
+                    task.web_candidates = [candidate]
+                    task.text = f"{task.text}\nSelected public site: {site_url}".strip()
+                    task.clarifying_question_en = None
+                    task.clarifying_question_hi = None
+                    query = self._direct_web_query(text)
+                    if query:
+                        try:
+                            task.web_query = str(
+                                self._validate_field_value(
+                                    self.flows["web_discovery"].fields[1], query
+                                )
+                            )
+                        except ValueError:
+                            task.web_query = None
+                    if task.web_query:
+                        event_data = self._prepare_web_approval(task)
+                        event_messages = (
+                            "Review and approve this read-only website search.",
+                            "इस वेबसाइट की केवल-पढ़ने वाली खोज जाँचकर अनुमति दें।",
+                        )
+                    else:
+                        task.web_query = None
+                        task.web_phase = "question"
+                        task.state = TaskState.NEEDS_INFO
+                        task.clarifying_question_en = (
+                            f"What would you like to find out on {host}?"
+                        )
+                        task.clarifying_question_hi = (
+                            f"{host} पर आप क्या जानना चाहते हैं?"
+                        )
+                        event_messages = (
+                            task.clarifying_question_en,
+                            task.clarifying_question_hi,
+                        )
+                        event_data = {
+                            **self._needs_info_data(task),
+                            "web_phase": "question",
+                            "selected_site": candidate.model_dump(),
+                        }
+                    self.store.replace(task)
+                else:
+                    flow = self.flows["web_discovery"]
+                    try:
+                        site_name = str(
+                            self._validate_field_value(flow.fields[0], text.strip())
+                        )
+                    except ValueError as error:
+                        raise ValueError(
+                            "provide a valid website or service name"
+                        ) from error
+                    task.values = {"site_name": site_name}
+                    task.web_phase = None
+                    task.state = TaskState.WORKING
+                    task.text = f"{task.text}\nWebsite or service: {site_name}".strip()
+                    task.clarifying_question_en = None
+                    task.clarifying_question_hi = None
+                    self.store.replace(task)
+                    event_messages = (
+                        f"Looking for the official public website for {site_name}.",
+                        f"{site_name} की आधिकारिक सार्वजनिक वेबसाइट खोज रहा हूँ।",
+                    )
+                    event_data = {
+                        "action": "Finding the likely official site",
+                        "streaming_url": None,
+                        "site_name": site_name,
+                    }
+                    web_action = "resolve"
             elif task.flow_id == "web_discovery" and task.web_phase == "site_choice":
                 candidate = self._select_website_candidate(task, text)
                 if candidate is None:
@@ -258,6 +321,9 @@ class Orchestrator:
 
     async def _run_planner(self, task_id: str) -> None:
         task = self._require_task(task_id)
+        if task.requested_flow == "web":
+            await self._start_user_provided_web_discovery(task_id)
+            return
         youtube_query = self._explicit_youtube_search_query(task.text)
         if youtube_query:
             await self._apply_plan(
@@ -272,12 +338,16 @@ class Orchestrator:
                 ),
             )
             return
+        if self._is_demo_form_request(task):
+            await self._apply_plan(task_id, self._demo_form_plan(task))
+            return
         try:
             plan = await self.planner.plan(
                 task.text,
                 task.language,
                 list(self.flows.values()),
                 task.values,
+                task.conversation_history,
             )
         except PlannerOutputError:
             await self._request_rephrase(task_id)
@@ -297,13 +367,96 @@ class Orchestrator:
                 reason="planner_rate_limited",
             )
             return
-        except PlannerError:
+        except PlannerError as error:
             await self._planner_failed(
-                task_id, "The Gemini planner is unavailable. Please try again later."
+                task_id, str(error)
             )
             return
 
         await self._apply_plan(task_id, plan)
+
+    @staticmethod
+    def _is_demo_form_request(task: Task) -> bool:
+        if task.requested_flow == "demo":
+            return True
+        return bool(
+            re.search(
+                r"(?:\b(?:fill|complete|submit|open|start)\b.{0,40}"
+                r"\b(?:demo|mock)\s+form\b|"
+                r"\b(?:demo|mock)\s+form\b.{0,40}\b(?:fill|complete)\b|"
+                r"डेमो\s*(?:फ़ॉर्म|फॉर्म).{0,25}(?:भर|शुरू|पूरा))",
+                task.text,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    def _demo_form_plan(self, task: Task) -> PlannerResult:
+        flow = self.flows["mock_scheme_application"]
+        patterns = {
+            "full_name": (
+                r"(?:full\s*name|name|पूरा\s*नाम|नाम)\s*(?:is|:|=|है)?\s*"
+                r"(.+?)(?=\s+(?:age|state|phone|mobile|उम्र|राज्य|फ़ोन|फोन)\b"
+                r"|[,;\n]|$)"
+            ),
+            "age": r"(?:\bage\b|उम्र)\s*(?:is|:|=|है)?\s*([0-9०-९]{1,3})",
+            "state": (
+                r"(?:\bstate\b|राज्य)\s*(?:is|:|=|है)?\s*([^,;\n]+?)"
+                r"(?=,\s*(?:age|phone|mobile|उम्र|फ़ोन|फोन)\b|"
+                r"\s+(?:age|phone|mobile|उम्र|फ़ोन|फोन)\b|$)"
+            ),
+            "phone": (
+                r"(?:\b(?:phone|mobile|mobile\s*number)\b|फ़ोन|फोन|मोबाइल)"
+                r"\s*(?:number|is|:|=|है)?\s*([0-9०-९][0-9०-९\s-]{7,17})"
+            ),
+        }
+        values: dict[str, str | int] = dict(task.values)
+        for key, pattern in patterns.items():
+            match = re.search(pattern, task.text, flags=re.IGNORECASE)
+            if match:
+                value = match.group(1).strip(" \t:-")
+                if value:
+                    values[key] = value
+        missing = [
+            field.key
+            for field in flow.fields
+            if field.required and field.key not in values
+        ]
+        if missing and "\n" in task.text:
+            answer_parts = [
+                part.strip()
+                for part in task.text.rsplit("\n", 1)[-1].split(",")
+                if part.strip()
+            ]
+            if len(answer_parts) == len(missing):
+                candidate_values = dict(zip(missing, answer_parts, strict=True))
+                fields = {field.key: field for field in flow.fields}
+                try:
+                    for key, value in candidate_values.items():
+                        self._validate_field_value(fields[key], value)
+                except ValueError:
+                    pass
+                else:
+                    values.update(candidate_values)
+                    missing = [
+                        field.key
+                        for field in flow.fields
+                        if field.required and field.key not in values
+                    ]
+        language = task.language
+        if language == "auto":
+            language = (
+                "hi"
+                if re.search(r"[\u0900-\u097f]", task.text)
+                else "en"
+            )
+        return PlannerResult(
+            flow_id=flow.id,
+            values=values,
+            missing=missing,
+            language=language,
+            clarifying_question_en="",
+            clarifying_question_hi="",
+        )
 
     @staticmethod
     def _explicit_youtube_search_query(text: str) -> str | None:
@@ -318,6 +471,131 @@ class Orchestrator:
             if match and (query := match.group(1).strip()):
                 return query
         return None
+
+    async def _start_user_provided_web_discovery(self, task_id: str) -> None:
+        task = self._require_task(task_id)
+        site_url = self._explicit_public_site_url(task.text)
+        youtube_query = self._explicit_youtube_search_query(task.text)
+        if site_url is None and youtube_query:
+            site_url = "https://www.youtube.com/"
+        if site_url is None:
+            async with self._lock:
+                task = self._require_task(task_id)
+                if task.state != TaskState.PLANNING or task.cancelled:
+                    return
+                task.flow_id = "web_discovery"
+                task.web_phase = "site_name"
+                task.state = TaskState.NEEDS_INFO
+                task.clarifying_question_en = (
+                    "Paste the exact public HTTPS website address you want to explore. "
+                    "I will not browse until you approve a specific search."
+                )
+                task.clarifying_question_hi = (
+                    "जिस सार्वजनिक वेबसाइट को देखना चाहते हैं उसका पूरा HTTPS पता भेजें। "
+                    "आपकी अनुमति से पहले मैं ब्राउज़ नहीं करूँगा।"
+                )
+                self.store.replace(task)
+            await self._emit(
+                task,
+                task.clarifying_question_en,
+                task.clarifying_question_hi,
+                2,
+                4,
+                self._needs_info_data(task),
+            )
+            return
+
+        host = urlsplit(site_url).hostname or site_url
+        candidate = WebsiteCandidate(
+            name=host,
+            url=site_url,
+            reason="URL provided by you; ownership is not independently verified.",
+            confidence="low",
+        )
+        query = youtube_query or self._direct_web_query(task.text)
+        try:
+            validated_query = (
+                str(self._validate_field_value(self.flows["web_discovery"].fields[1], query))
+                if query
+                else None
+            )
+        except ValueError:
+            validated_query = None
+
+        async with self._lock:
+            task = self._require_task(task_id)
+            if task.state != TaskState.PLANNING or task.cancelled:
+                return
+            task.flow_id = "web_discovery"
+            task.values = {"site_name": host}
+            task.web_candidates = [candidate]
+            task.selected_site_url = site_url
+            task.web_query = validated_query
+            task.web_phase = None
+            task.clarifying_question_en = None
+            task.clarifying_question_hi = None
+            if validated_query:
+                event_data = self._prepare_web_approval(task)
+                event_messages = (
+                    "Review and approve this read-only website search.",
+                    "इस वेबसाइट की केवल-पढ़ने वाली खोज जाँचकर अनुमति दें।",
+                )
+            else:
+                task.web_phase = "question"
+                task.state = TaskState.NEEDS_INFO
+                task.clarifying_question_en = (
+                    f"What would you like to find out on {host}?"
+                )
+                task.clarifying_question_hi = f"{host} पर आप क्या जानना चाहते हैं?"
+                event_data = {
+                    **self._needs_info_data(task),
+                    "web_phase": "question",
+                    "selected_site": candidate.model_dump(),
+                }
+                event_messages = (
+                    task.clarifying_question_en,
+                    task.clarifying_question_hi,
+                )
+            self.store.replace(task)
+        await self._emit(
+            task,
+            event_messages[0],
+            event_messages[1],
+            2,
+            4,
+            event_data,
+        )
+
+    @staticmethod
+    def _explicit_public_site_url(text: str) -> str | None:
+        match = re.search(r"https?://[^\s<>\"']+", text, flags=re.IGNORECASE)
+        if match is None:
+            return None
+        raw_url = match.group().rstrip(".,!?;:)]}")
+        return Orchestrator._safe_public_site_url(raw_url)
+
+    @staticmethod
+    def _direct_web_query(text: str) -> str | None:
+        without_url = re.sub(
+            r"https?://[^\s<>\"']+", " ", text, count=1, flags=re.IGNORECASE
+        )
+        query = re.sub(
+            r"^\s*(?:(?:please|could you)\s+)?"
+            r"(?:search|find|look\s+up|check|read|summarize|explain|tell\s+me\s+about)"
+            r"\s+(?:for\s+)?",
+            "",
+            without_url,
+            flags=re.IGNORECASE,
+        )
+        query = re.sub(
+            r"\s+(?:on|at|from)\s+(?:this\s+)?(?:website|site)\s*$",
+            "",
+            query,
+            flags=re.IGNORECASE,
+        )
+        query = re.sub(r"\s+(?:on|at|from)\s*$", "", query, flags=re.IGNORECASE)
+        query = query.strip(" \t\r\n,.;!?")
+        return query or None
 
     async def _apply_plan(self, task_id: str, plan: PlannerResult) -> None:
         start_web_resolution = False
@@ -347,15 +625,57 @@ class Orchestrator:
             if task.state != TaskState.PLANNING or task.cancelled:
                 return
 
-            if plan.flow_id is None:
+            if plan.action == "conversation":
+                task.flow_id = None
+                task.values = {}
+                task.missing = []
+                task.approval_id = None
+                task.approval_type = None
+                task.web_phase = None
+                task.web_candidates = []
+                task.selected_site_url = None
+                task.web_query = None
+                task.web_answer = None
+                task.web_sources = []
+                task.web_media = []
+                task.schemes = []
+                task.evidence = None
+                task.needs_human_kind = None
+                task.human_action_url = None
+                task.error = None
+                task.error_hi = None
+                task.clarifying_question_en = None
+                task.clarifying_question_hi = None
+                task.language = (
+                    task.language if task.language != "auto" else plan.language
+                )
+                task.assistant_response_en = (
+                    plan.response_en.strip()
+                    or plan.clarifying_question_en.strip()
+                    or "What would you like help with?"
+                )
+                task.assistant_response_hi = (
+                    plan.response_hi.strip()
+                    or plan.clarifying_question_hi.strip()
+                    or "आप किस विषय में मदद चाहते हैं?"
+                )
+                task.reason = "conversation"
+                task.state = TaskState.DONE
+                self.store.replace(task)
+                event_data = self._result_data(task, "conversation")
+                event_messages = (
+                    task.assistant_response_en,
+                    task.assistant_response_hi,
+                )
+            elif plan.flow_id is None:
                 task.state = TaskState.NEEDS_INFO
                 task.clarifying_question_en = (
                     plan.clarifying_question_en
-                    or "What would you like help with? I can fill the demo form."
+                    or "What would you like help with?"
                 )
                 task.clarifying_question_hi = (
                     plan.clarifying_question_hi
-                    or "आप किस काम में मदद चाहते हैं? मैं डेमो फ़ॉर्म भर सकता हूँ।"
+                    or "आप किस काम में मदद चाहते हैं?"
                 )
                 self.store.replace(task)
                 event_data = self._needs_info_data(task)
@@ -366,11 +686,12 @@ class Orchestrator:
             elif plan.flow_id not in self.flows:
                 task.state = TaskState.NEEDS_INFO
                 task.clarifying_question_en = (
-                    "That task is not available yet. Would you like help with the "
-                    "demo application form?"
+                    "I can't perform that action yet. I can still help you plan it, "
+                    "draft a message, or look up public information."
                 )
                 task.clarifying_question_hi = (
-                    "यह काम अभी उपलब्ध नहीं है। क्या आप डेमो आवेदन फ़ॉर्म में मदद चाहते हैं?"
+                    "मैं अभी यह काम स्वयं नहीं कर सकता। फिर भी मैं इसकी योजना बनाने, "
+                    "संदेश का मसौदा लिखने या सार्वजनिक जानकारी खोजने में मदद कर सकता हूँ।"
                 )
                 self.store.replace(task)
                 event_data = self._needs_info_data(task)
@@ -728,6 +1049,33 @@ class Orchestrator:
 
     @staticmethod
     def _missing_question(flow: FlowConfig, missing: list[str], language: str) -> str:
+        if flow.id == "mock_scheme_application":
+            examples = {
+                "full_name": ("Savitri Devi", "सावित्री देवी"),
+                "age": ("72", "72"),
+                "state": ("Delhi", "दिल्ली"),
+                "phone": ("9876543210", "9876543210"),
+            }
+            example = ", ".join(
+                examples[key][1 if language == "hi" else 0]
+                for key in missing
+                if key in examples
+            )
+            labels = [
+                flow_field.label_hi if language == "hi" else flow_field.label_en
+                for flow_field in flow.fields
+                if flow_field.key in missing
+            ]
+            joined = ", ".join(labels)
+            if language == "hi":
+                return (
+                    f"कृपया {joined} बताएं। इसी क्रम में लिखें; उम्र संख्या में और "
+                    f"मोबाइल नंबर 10 अंकों का हो। उदाहरण: {example}।"
+                )
+            return (
+                f"Please provide {joined} in this order. Enter age as a number and "
+                f"mobile number as 10 digits. Example: {example}."
+            )
         labels = [
             flow_field.label_hi if language == "hi" else flow_field.label_en
             for flow_field in flow.fields
@@ -847,6 +1195,7 @@ class Orchestrator:
                 if planner_run is not None:
                     planner_run.cancel()
             active_run_id = self._active_runs.get(task_id)
+            active_agent = self._active_agents.get(task_id, self.agent)
             if task.state == TaskState.SUBMITTING:
                 submission_token = self._submission_tokens.get(task_id)
                 if submission_token is None:
@@ -877,12 +1226,12 @@ class Orchestrator:
                 trigger="user_stopped",
             )
             if active_run_id is not None:
-                await self._cancel_agent_run(task_id, active_run_id)
+                await self._cancel_agent_run(task_id, active_run_id, active_agent)
         elif terminal_event is not None:
             cancellation_confirmed = True
             if active_run_id is not None:
                 cancellation_confirmed = await self._cancel_agent_run(
-                    task_id, active_run_id
+                    task_id, active_run_id, active_agent
                 )
             if not cancellation_confirmed and terminal_event.state == TaskState.STOPPED:
                 terminal_event.error = (
@@ -939,6 +1288,7 @@ class Orchestrator:
                 return
             await self._discover(task_id)
             return
+        agent = self._agent_for_flow(flow)
         await self._emit(
             task,
             "Filling the demo form.",
@@ -948,11 +1298,11 @@ class Orchestrator:
             {
                 "action": "Fill fields",
                 "streaming_url": None,
-                "browser_started": True,
+                "browser_started": not isinstance(agent, MockBrowserAgent),
             },
         )
         goal = self._format_goal(flow.goal_template, flow, task.values)
-        if isinstance(self.agent, MockBrowserAgent):
+        if isinstance(agent, MockBrowserAgent):
             goal = self._with_mock_context(
                 goal, "fill", task.task_id, task.values
             )
@@ -962,7 +1312,7 @@ class Orchestrator:
                 return
             try:
                 result = await self._run_agent(
-                    task_id, self._browser_flow_url(flow), goal
+                    task_id, self._browser_flow_url(flow), goal, agent
                 )
             except (httpx.TransportError, TimeoutError, ConnectionError, OSError) as error:
                 logger.warning(
@@ -1618,8 +1968,10 @@ class Orchestrator:
         task = self._require_task(task_id)
         if task.cancelled:
             return
-        if self.flows[task.flow_id].flow_type != FlowType.SUBMISSION:
+        flow = self.flows[task.flow_id]
+        if flow.flow_type != FlowType.SUBMISSION:
             raise ValueError("discovery flows cannot be submitted")
+        agent = self._agent_for_flow(flow)
         await self._emit(
             task,
             "Submitting the approved demo form.",
@@ -1629,17 +1981,16 @@ class Orchestrator:
             {
                 "action": "Submit once",
                 "streaming_url": None,
-                "browser_started": True,
+                "browser_started": not isinstance(agent, MockBrowserAgent),
             },
         )
         task = self._require_task(task_id)
         if task.cancelled:
             return
-        flow = self.flows[task.flow_id]
         goal = self._format_goal(
             flow.submit_goal_template or "", flow, task.values, token
         )
-        if isinstance(self.agent, MockBrowserAgent):
+        if isinstance(agent, MockBrowserAgent):
             goal = self._with_mock_context(
                 goal, "submit", task.task_id, task.values, token
             )
@@ -1647,7 +1998,7 @@ class Orchestrator:
         try:
             try:
                 result = await self._run_agent(
-                    task_id, self._browser_flow_url(flow), goal
+                    task_id, self._browser_flow_url(flow), goal, agent
                 )
             except Exception as error:
                 logger.error(
@@ -1717,21 +2068,34 @@ class Orchestrator:
             self._result_data(task, reason),
         )
 
-    async def _run_agent(self, task_id: str, url: str, goal: str) -> RunResult:
-        run_with_callback = getattr(self.agent, "run_with_callback", None)
+    async def _run_agent(
+        self, task_id: str, url: str, goal: str, agent: BrowserAgent | None = None
+    ) -> RunResult:
+        active_agent = agent or self.agent
+        run_with_callback = getattr(active_agent, "run_with_callback", None)
+
+        async def publish_progress(
+            streaming_url: str | None, action: str | None
+        ) -> None:
+            if not isinstance(active_agent, MockBrowserAgent):
+                await self._publish_agent_progress(
+                    task_id, streaming_url, action
+                )
+
         try:
             if callable(run_with_callback):
                 return await run_with_callback(
                     url,
                     goal,
-                    lambda run_id: self._register_active_run(task_id, run_id),
-                    lambda streaming_url, action: self._publish_agent_progress(
-                        task_id, streaming_url, action
+                    lambda run_id: self._register_active_run(
+                        task_id, run_id, active_agent
                     ),
+                    publish_progress,
                 )
-            return await self.agent.run(url, goal)
+            return await active_agent.run(url, goal)
         finally:
             self._active_runs.pop(task_id, None)
+            self._active_agents.pop(task_id, None)
 
     async def _publish_agent_progress(
         self,
@@ -1770,14 +2134,21 @@ class Orchestrator:
             },
         )
 
-    def _register_active_run(self, task_id: str, run_id: str) -> None:
+    def _register_active_run(
+        self, task_id: str, run_id: str, agent: BrowserAgent | None = None
+    ) -> None:
         self._active_runs[task_id] = run_id
+        self._active_agents[task_id] = agent or self.agent
         if self._require_task(task_id).cancelled:
-            asyncio.create_task(self._cancel_agent_run(task_id, run_id))
+            asyncio.create_task(
+                self._cancel_agent_run(task_id, run_id, agent or self.agent)
+            )
 
-    async def _cancel_agent_run(self, task_id: str, run_id: str) -> bool:
+    async def _cancel_agent_run(
+        self, task_id: str, run_id: str, agent: BrowserAgent | None = None
+    ) -> bool:
         try:
-            result = await self.agent.cancel(run_id)
+            result = await (agent or self.agent).cancel(run_id)
         except Exception as error:
             logger.warning(
                 "Unable to cancel browser run for task %s (%s)",
@@ -1864,6 +2235,13 @@ class Orchestrator:
         if not flow.url:
             raise ValueError(f"Flow {flow.id} has no browser URL.")
         return flow.url
+
+    def _agent_for_flow(self, flow: FlowConfig) -> BrowserAgent:
+        if flow.id == "mock_scheme_application" and isinstance(
+            self.agent, TinyFishAgent
+        ):
+            return MockBrowserAgent(self.submission_store)
+        return self.agent
 
     @staticmethod
     def _discovery_human_kind(
@@ -2308,7 +2686,10 @@ class Orchestrator:
             task.flow_id in self.flows
             and self.flows[task.flow_id].flow_type == FlowType.DISCOVERY
         )
-        if is_myscheme and task.state == TaskState.DONE:
+        if reason == "conversation":
+            summary_en = task.assistant_response_en or "How can I help?"
+            summary_hi = task.assistant_response_hi or "मैं आपकी क्या मदद करूँ?"
+        elif is_myscheme and task.state == TaskState.DONE:
             summary_en = (
                 f"Found {len(task.schemes)} possible scheme listings on myScheme. "
                 "Eligibility is not confirmed."

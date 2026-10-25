@@ -1,20 +1,27 @@
 # SahayakAI
 
-SahayakAI is a hackathon project we're building to make web forms and public-service websites easier to use, especially for people who prefer Hindi or have difficulty navigating websites.
+SahayakAI is a voice-and-text assistant. People can speak or type naturally,
+receive a conversational response, and continue with follow-up turns. When a
+request matches an available tool, SahayakAI can help carry it out with clear
+review and approval before consequential actions.
 
-The idea is simple: users should be able to explain what they need in Hindi or English, review the information before the assistant enters it, and approve an action before anything is submitted. The assistant should also be able to stop when asked and report what actually happened.
+The product goal is broader than any single website or domain. Government
+schemes and forms are examples, not the product boundary. The current prototype
+is an early step toward that goal, not a general-purpose agent that can safely
+perform every task.
 
 ## What we're building
 
-The prototype has three workflows:
+The prototype currently supports:
 
-- **myScheme discovery:** A guarded, read-only search of public myScheme pages. It does not enter personal details, submit applications, or confirm eligibility. The M0 smoke test had one successful English run; repeat and Hindi runs timed out, so treat this as optional and do not rely on it for the stage demo.
-- **Any public website:** Choose “Any public website” and enter a site or service name. Gemini's Google Search grounding API finds likely official sites without opening a search-results page in TinyFish. A single high-confidence match is shown before the app asks what to look up; ambiguous matches require the user to choose. TinyFish then reads public pages on that hostname and returns an answer with same-site source links. This is best-effort, not coverage of every website or independent verification of a site's ownership. Login, CAPTCHA, OTP, form filling, and submissions are out of scope.
+- **Conversation:** General questions, explanations, drafting, brainstorming, and follow-up turns in Hindi or English. The latest 12 conversation messages are sent to Gemini as context; starting a new conversation clears the in-memory chat history.
+- **Any public website:** In “Any public website” mode, provide the exact public HTTPS address and what you want to find. TinyFish reads public pages only after you approve the request, then returns an answer with same-site source links. The address is user-provided and SahayakAI does not independently verify site ownership. Natural-language website searches in Assistant mode may use Gemini's Google Search grounding to find likely official sites. Login, CAPTCHA, OTP, form filling, and submissions are out of scope.
 - **Demo application form:** Use a separate test website with fake information to demonstrate filling out a form and submitting it only after the user gives explicit approval.
+- **myScheme discovery:** A guarded, read-only search of public myScheme pages. It does not enter personal details, submit applications, or confirm eligibility.
 
 ## Current status
 
-The repository contains an end-to-end bilingual demo flow. The current browser
+The repository contains a bilingual conversation-and-action prototype. The current browser
 agent defaults to a deterministic mock adapter; live TinyFish integration is
 available as a separate adapter and must be configured explicitly.
 
@@ -23,7 +30,8 @@ available as a separate adapter and must be configured explicitly.
 - React/Vite interface with typed requests, approval review/edit controls,
   progress, voice controls, and task results.
 - Gemini planner using schema-constrained JSON, a needs-information answer loop,
-  and server-side validation against the selected flow's declared fields.
+  bounded recent-turn context, conversational responses, and server-side
+  validation against the selected flow's declared fields.
 - Separate SQLite-backed demo form with expiring, revocable, single-use
   submission codes and payload binding.
 - Server-authoritative success verification: the backend reports a successful
@@ -33,11 +41,12 @@ available as a separate adapter and must be configured explicitly.
   does not automatically retry a submission without verified status.
 - TinyFish adapter with polling, cancellation handling, screenshots, and live
   browser-view URL support.
-- Generic read-only website discovery: site-name search using Gemini's Google
-  Search grounding API, candidate selection when ambiguous, same-host source
-  filtering, and an answer backed by public page links. TinyFish browses the
-  selected site only; the deterministic mock agent does not simulate or browse
-  arbitrary websites.
+- Generic read-only website discovery: explicit website mode accepts a
+  user-provided public HTTPS address without depending on Gemini Search;
+  Assistant-mode named-site search can use Gemini's Google Search grounding.
+  Both paths require approval, use same-host source filtering, and return an
+  answer backed by public page links. The deterministic mock agent does not
+  simulate or browse arbitrary websites.
 - Public music/video discovery: searches YouTube for user-requested titles,
   artists, or topics, and returns validated public video links. A user-provided
   YouTube share link is normalized to its canonical video URL. Browsing requires
@@ -50,6 +59,13 @@ available as a separate adapter and must be configured explicitly.
   and a demo-form fallback when results cannot be safely extracted.
 
 **Not yet implemented**
+- Arbitrary task execution or integrations for email, calendars, messaging,
+  files, music playback, purchases, or other external services. The assistant
+  must be honest about these limits; adding them requires dedicated integrations,
+  user authorization, scoped credentials, and action-specific confirmation.
+- Durable conversation history, user accounts, or cross-device memory. The
+  current conversation context lives only in frontend memory and is limited to
+  the latest 12 messages.
 - Production-grade planner and deployments with a configured Gemini API key.
 - Real government website submission. This is intentionally out of scope; only
   the clearly labelled fake demo form may be submitted.
@@ -71,9 +87,8 @@ Before starting the backend, copy `.env.example` to `.env` and set
 `LLM_API_KEY` to your Gemini API key. The key stays on the backend and must not
 be committed or pasted into chat.
 
-The request text and any values collected for a task are sent to Gemini for
-planning. The app does not currently accept real personal data; use synthetic
-details only and do not enter sensitive information.
+The request, up to 12 recent conversation messages, and any values collected
+for a task are sent to Gemini. Do not include sensitive personal information.
 
 ### 1. Start the backend
 
@@ -87,11 +102,12 @@ python -m uvicorn backend.main:app --host 127.0.0.1 --reload --env-file .env
 ```
 
 The planner uses `LLM_PROVIDER=gemini` and `LLM_MODEL=gemini-3.8-flash` by
-default. It sends requests through Gemini's stateless Interactions API and
-validates the JSON response before any task can reach approval. The request
-text and collected task values are sent to Gemini; use synthetic details only.
-Public website discovery also uses Gemini's Google Search grounding tool with
-the same API key; it no longer opens a Google results page in TinyFish.
+default. On a Gemini 503 response or read timeout, generation retries once with
+`gemini-3.5-flash-lite`; quota errors are not retried with another model. The
+planner validates the JSON response before any task can reach approval.
+Conversation history is held only in frontend memory and is cleared with
+**New conversation**. Explicit public-website mode uses the exact HTTPS address
+provided by the user and does not require Gemini Search grounding.
 
 The browser agent defaults to `BROWSER_AGENT=mock` for offline development.
 To run tasks with TinyFish, set `BROWSER_AGENT=tinyfish` and configure

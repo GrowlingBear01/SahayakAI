@@ -24,7 +24,9 @@ class AnswerLoopPlanner:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def plan(self, transcript, language, flows, values) -> PlannerResult:
+    async def plan(
+        self, transcript, language, flows, values, conversation_history=()
+    ) -> PlannerResult:
         self.calls += 1
         if self.calls == 1:
             return PlannerResult(
@@ -203,7 +205,7 @@ class ApiTests(unittest.TestCase):
         with patch("backend.main.orchestrator", orchestrator):
             created = self.client.post(
                 "/tasks",
-                json={"text": "Fill the demo form for Savitri Devi", "lang": "en"},
+                json={"text": "Savitri Devi needs help with an application", "lang": "en"},
             )
             task_id = created.json()["task_id"]
             task = self.wait_for_planner(task_id)
@@ -219,7 +221,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(task["state"], TaskState.WAITING_FOR_APPROVAL.value)
         self.assertEqual(task["values"]["age"], 72)
 
-    def test_missing_gemini_key_is_reported_as_task_failure(self) -> None:
+    def test_demo_form_does_not_require_gemini_planner(self) -> None:
         orchestrator = Orchestrator(
             TaskStore(),
             planner=GeminiPlanner("", "gemini-3.8-flash", provider="gemini"),
@@ -231,12 +233,14 @@ class ApiTests(unittest.TestCase):
             )
             task = self.wait_for_planner(created.json()["task_id"])
 
-        self.assertEqual(task["state"], TaskState.COULD_NOT_FINISH.value)
-        self.assertIn("LLM_API_KEY", task["error"])
+        self.assertEqual(task["state"], TaskState.NEEDS_INFO.value)
+        self.assertEqual(task["missing"], ["full_name", "age", "state", "phone"])
 
     def test_gemini_quota_error_is_actionable_and_localized(self) -> None:
         class RateLimitedPlanner:
-            async def plan(self, transcript, language, flows, values):
+            async def plan(
+                self, transcript, language, flows, values, conversation_history=()
+            ):
                 raise PlannerRateLimitError("quota reached")
 
         orchestrator = Orchestrator(TaskStore(), planner=RateLimitedPlanner())
@@ -254,6 +258,67 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(task["reason"], "planner_rate_limited")
         self.assertIn("quota has been reached", task["error"])
         self.assertIn("कोटा", task["error_hi"])
+
+    def test_general_conversation_completes_without_choosing_a_form(self) -> None:
+        class ConversationPlanner:
+            history = None
+
+            async def plan(
+                self, transcript, language, flows, values, conversation_history=()
+            ):
+                self.history = list(conversation_history)
+                return PlannerResult(
+                    action="conversation",
+                    flow_id=None,
+                    values={},
+                    missing=[],
+                    language="en",
+                    clarifying_question_en="",
+                    clarifying_question_hi="",
+                    response_en="Sure—I'll make the note warmer.",
+                    response_hi="ज़रूर—मैं संदेश को और आत्मीय बनाऊँगा।",
+                )
+
+        planner = ConversationPlanner()
+        orchestrator = Orchestrator(TaskStore(), planner=planner)
+        history = [
+            {"role": "user", "text": "Help me write a thank-you note."},
+            {"role": "assistant", "text": "Who is it for?"},
+        ]
+        with patch("backend.main.orchestrator", orchestrator):
+            created = self.client.post(
+                "/tasks",
+                json={
+                    "text": "Make it warmer.",
+                    "lang": "en",
+                    "history": history,
+                },
+            )
+            task = self.wait_for_planner(created.json()["task_id"])
+
+        self.assertEqual(task["state"], TaskState.DONE.value)
+        self.assertEqual(task["reason"], "conversation")
+        self.assertEqual(
+            task["assistant_response_en"], "Sure—I'll make the note warmer."
+        )
+        self.assertEqual(
+            [turn.model_dump() for turn in planner.history],
+            history,
+        )
+        self.assertNotIn("conversation_history", task)
+
+    def test_task_request_rejects_unbounded_conversation_history(self) -> None:
+        response = self.client.post(
+            "/tasks",
+            json={
+                "text": "Hello",
+                "history": [
+                    {"role": "user", "text": f"turn {index}"}
+                    for index in range(13)
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 422)
 
     def test_approval_card_marks_reported_field_mismatch(self) -> None:
         orchestrator = Orchestrator(TaskStore())

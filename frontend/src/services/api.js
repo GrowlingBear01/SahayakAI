@@ -72,8 +72,11 @@ export const api = {
     return request("/flows");
   },
 
-  createTask(text, lang, flow = "auto") {
-    return request("/tasks", { method: "POST", body: { text, lang, flow } });
+  createTask(text, lang, flow = "auto", history = []) {
+    return request("/tasks", {
+      method: "POST",
+      body: { text, lang, flow, history },
+    });
   },
 
   getTask(taskId) {

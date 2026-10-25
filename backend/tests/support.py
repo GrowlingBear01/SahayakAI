@@ -5,13 +5,14 @@ from backend.schemas import Task, TaskState
 
 
 DEMO_REQUEST = (
-    "Fill the demo form for Savitri Devi, age 72, in Delhi, "
-    "phone 9876543210."
+    "Savitri Devi, age 72, state Delhi, phone 9876543210."
 )
 
 
 class CompleteDemoPlanner:
-    async def plan(self, transcript, language, flows, values) -> PlannerResult:
+    async def plan(
+        self, transcript, language, flows, values, conversation_history=()
+    ) -> PlannerResult:
         return PlannerResult(
             flow_id="mock_scheme_application",
             values={

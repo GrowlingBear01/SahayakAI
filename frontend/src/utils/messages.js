@@ -1,8 +1,8 @@
 export const copy = {
   brand: { en: "SahayakAI", hi: "सहायकAI" },
   tagline: {
-    en: "Speak. Review. Approve. Then we act.",
-    hi: "बोलें। जाँचें। अनुमति दें। तब हम काम करेंगे।",
+    en: "Talk with me, or ask for help with a task. Actions need your approval.",
+    hi: "बात करें या किसी काम में मदद माँगें। कार्रवाई के लिए आपकी अनुमति ज़रूरी है।",
   },
   listening: { en: "Listening…", hi: "सुन रहा हूँ…" },
   processing: { en: "Thinking…", hi: "समझ रहा हूँ…" },
@@ -15,8 +15,8 @@ export const copy = {
   },
   send: { en: "Send", hi: "भेजें" },
   externalProcessingNotice: {
-    en: "Before sending: your request is processed by Gemini. Use fake details; do not enter sensitive personal information.",
-    hi: "भेजने से पहले: आपका अनुरोध Gemini द्वारा संसाधित होगा। नकली जानकारी दें; संवेदनशील निजी जानकारी न लिखें।",
+    en: "Your request and up to 12 recent messages are sent to Gemini. Don’t include sensitive personal information.",
+    hi: "आपका अनुरोध और हाल के 12 संदेश तक Gemini को भेजे जाते हैं। संवेदनशील निजी जानकारी न दें।",
   },
   startListening: { en: "Start listening", hi: "सुनना शुरू करें" },
   stopListening: { en: "Stop listening", hi: "सुनना बंद करें" },
@@ -31,22 +31,24 @@ export const copy = {
   cancelApproval: { en: "Cancel", hi: "रद्द करें" },
   language: { en: "Language", hi: "भाषा" },
   flow: { en: "Flow", hi: "प्रवाह" },
+  mode: { en: "Mode", hi: "मोड" },
+  assistantMode: { en: "Assistant", hi: "सहायक" },
   realWebsite: { en: "REAL WEBSITE", hi: "असली वेबसाइट" },
   demoForm: { en: "DEMO FORM", hi: "डेमो फ़ॉर्म" },
   discovery: { en: "Real website discovery", hi: "असली वेबसाइट खोज" },
   demo: { en: "Demo form", hi: "डेमो फ़ॉर्म" },
   anyWebsite: { en: "Any public website", hi: "कोई भी सार्वजनिक वेबसाइट" },
   siteNamePlaceholder: {
-    en: "Enter a website or service name",
-    hi: "वेबसाइट या सेवा का नाम लिखें",
+    en: "Paste a public HTTPS website address",
+    hi: "सार्वजनिक वेबसाइट का HTTPS पता लिखें",
   },
   websiteQuestionPlaceholder: {
     en: "What would you like to find out on this site?",
     hi: "इस वेबसाइट पर आप क्या जानना चाहते हैं?",
   },
   webModeNotice: {
-    en: "TinyFish can search public pages and return public media links after you approve the exact request. It will not sign in, submit, purchase, or start playback.",
-    hi: "आपकी अनुमति के बाद TinyFish सार्वजनिक पेज खोजकर मीडिया लिंक दे सकता है। यह लॉगिन, फ़ॉर्म जमा, खरीदारी या वीडियो चलाना नहीं करेगा।",
+    en: "Paste the public HTTPS address to explore. TinyFish reads public pages only after you approve the exact request; it will not sign in, submit, purchase, or start playback.",
+    hi: "देखने के लिए सार्वजनिक HTTPS पता दें। आपकी अनुमति के बाद ही TinyFish सार्वजनिक पेज पढ़ेगा; यह लॉगिन, फ़ॉर्म जमा, खरीदारी या वीडियो चलाना नहीं करेगा।",
   },
   chooseWebsite: { en: "Choose the site you mean", hi: "अपनी वेबसाइट चुनें" },
   chooseWebsiteHelp: {
@@ -55,7 +57,7 @@ export const copy = {
   },
   chooseThisSite: { en: "Choose this site", hi: "यह वेबसाइट चुनें" },
   siteConfidence: { en: "Match confidence", hi: "मिलान का भरोसा" },
-  selectedWebsite: { en: "Selected likely official site", hi: "चुनी गई संभावित आधिकारिक वेबसाइट" },
+  selectedWebsite: { en: "Selected website", hi: "चुनी गई वेबसाइट" },
   readOnlyWebsiteNotice: {
     en: "The next step reads public pages only. It will not sign in, fill forms, or submit anything.",
     hi: "अगले चरण में केवल सार्वजनिक पेज पढ़े जाएंगे। लॉगिन, फ़ॉर्म भरना या कुछ जमा करना नहीं होगा।",
@@ -72,8 +74,8 @@ export const copy = {
     hi: "लिंक चुनकर YouTube पर खोलें; वीडियो आपके नियंत्रण में वहाँ चलेगा।",
   },
   websiteConfidenceCaveat: {
-    en: "The site is a likely match, not independently verified by SahayakAI.",
-    hi: "यह वेबसाइट संभावित मिलान है; SahayakAI ने इसे स्वतंत्र रूप से सत्यापित नहीं किया है।",
+    en: "SahayakAI does not independently verify ownership of this website.",
+    hi: "SahayakAI इस वेबसाइट के स्वामित्व की स्वतंत्र रूप से पुष्टि नहीं करता है।",
   },
   livePreview: { en: "Live browser", hi: "लाइव ब्राउज़र" },
   liveBrowserAction: { en: "TinyFish is doing", hi: "TinyFish अभी कर रहा है" },
@@ -226,17 +228,25 @@ export const copy = {
   },
   suggestions: [
     {
-      id: "demo-en",
-      flow: "demo",
-      text: { en: "Fill the demo form", hi: "डेमो फ़ॉर्म भरें" },
+      id: "conversation",
+      flow: "auto",
+      text: {
+        en: "Explain a topic or help me think through a problem",
+        hi: "किसी विषय को समझाएँ या समस्या पर सोचने में मदद करें",
+      },
     },
     {
-      id: "schemes",
-      flow: "discovery",
+      id: "web-search",
+      flow: "web",
       text: {
-        en: "Find schemes listed on myScheme (general search)",
-        hi: "myScheme पर सूचीबद्ध योजनाएँ खोजें (सामान्य खोज)",
+        en: "Find current information on a public website",
+        hi: "किसी सार्वजनिक वेबसाइट पर नई जानकारी खोजें",
       },
+    },
+    {
+      id: "demo-form",
+      flow: "demo",
+      text: { en: "Fill the demo form", hi: "डेमो फ़ॉर्म भरें" },
     },
   ],
   supportedLangs: {

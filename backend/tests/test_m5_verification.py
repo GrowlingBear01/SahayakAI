@@ -3,7 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import httpx
+
 from backend.agents.base import CancelResult, RunResult
+from backend.agents.tinyfish_agent import TinyFishAgent
 from backend.orchestrator import Orchestrator
 from backend.schemas import ApproveRequest, TaskState
 from backend.task_store import TaskStore
@@ -166,6 +169,61 @@ class M5VerificationTests(unittest.TestCase):
             )
             self.assertIsNotNone(verified)
             self.assertEqual(task.evidence["text"].split()[-1], verified.reference_number)
+
+        asyncio.run(scenario())
+
+    def test_demo_form_uses_local_agent_when_tinyfish_is_configured(self) -> None:
+        async def scenario() -> None:
+            calls = []
+            client = httpx.AsyncClient(
+                transport=httpx.MockTransport(
+                    lambda request: calls.append(request)
+                    or httpx.Response(500, request=request)
+                )
+            )
+            submission_store = RecordingMockStore(self.database_path)
+            orchestrator = Orchestrator(
+                TaskStore(),
+                agent=TinyFishAgent("test-key", client=client),
+                submission_store=submission_store,
+                planner=CompleteDemoPlanner(),
+            )
+            task = await orchestrator.create_task(
+                "Fill the demo form: full name Savitri Devi, age 72, state Delhi, "
+                "phone 9876543210",
+                "en",
+                "demo",
+            )
+            task = await wait_for_planner(orchestrator, task.task_id)
+            task = await orchestrator.approve(
+                task.task_id, ApproveRequest(approval_id=task.approval_id)
+            )
+            self.assertEqual(task.approval_type, "submit")
+            self.assertEqual(
+                task.reported_fields,
+                {key: str(value) for key, value in task.values.items()},
+            )
+            self.assertFalse(
+                any(
+                    event.data.get("browser_started") is True
+                    for event in orchestrator._history[task.task_id]
+                )
+            )
+            self.assertEqual(calls, [])
+
+            task = await orchestrator.approve(
+                task.task_id, ApproveRequest(approval_id=task.approval_id)
+            )
+            self.assertEqual(task.state, TaskState.DONE)
+            self.assertEqual(len(submission_store.issued_tokens), 1)
+            self.assertFalse(
+                any(
+                    event.data.get("browser_started") is True
+                    for event in orchestrator._history[task.task_id]
+                )
+            )
+            self.assertEqual(calls, [])
+            await client.aclose()
 
         asyncio.run(scenario())
 

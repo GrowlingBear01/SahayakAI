@@ -92,7 +92,12 @@ export default function App() {
           ) : null}
 
           <Transcript
-            userText={assistant.userUtterance || assistant.transcript}
+            history={assistant.conversationHistory}
+            userText={
+              voice.listening
+                ? assistant.transcript
+                : assistant.userUtterance || assistant.transcript
+            }
             assistantText={assistant.assistantText}
             listening={voice.listening}
           />
@@ -143,13 +148,15 @@ export default function App() {
         </section>
 
         <aside className="side">
-          <TaskProgress
-            language={language}
-            request={assistant.userUtterance}
-            taskState={taskState}
-            progress={assistant.progress}
-            onStop={assistant.stopTask}
-          />
+          {assistant.result?.reason === "conversation" ? null : (
+            <TaskProgress
+              language={language}
+              request={assistant.userUtterance}
+              taskState={taskState}
+              progress={assistant.progress}
+              onStop={assistant.stopTask}
+            />
+          )}
           <WebsiteChoiceCard
             language={language}
             phase={webPhase}
@@ -173,15 +180,17 @@ export default function App() {
             onEdit={(edits) => assistant.approve(edits)}
             onCancel={assistant.cancelApproval}
           />
-          <ResultCard
-            language={language}
-            result={assistant.result}
-            onSwitchDemo={() => {
-              assistant.newConversation();
-              assistant.setFlow("demo");
-              assistant.setTyped(t("demoFallbackRequest", language));
-            }}
-          />
+          {assistant.result?.reason === "conversation" ? null : (
+            <ResultCard
+              language={language}
+              result={assistant.result}
+              onSwitchDemo={() => {
+                assistant.newConversation();
+                assistant.setFlow("demo");
+                assistant.setTyped(t("demoFallbackRequest", language));
+              }}
+            />
+          )}
         </aside>
       </div>
 

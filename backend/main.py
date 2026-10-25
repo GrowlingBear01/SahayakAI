@@ -58,7 +58,10 @@ async def readiness(response: Response) -> dict[str, object]:
 @app.post("/tasks")
 async def create_task(request: CreateTaskRequest) -> dict[str, str]:
     task = await orchestrator.create_task(
-        request.text, request.lang, request.flow
+        request.text,
+        request.lang,
+        request.flow,
+        request.history,
     )
     return {"task_id": task.task_id}
 

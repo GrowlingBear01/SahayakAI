@@ -14,7 +14,9 @@ from mock_site.store import MockStore
 
 
 class WebPlanner:
-    async def plan(self, transcript, language, flows, values) -> PlannerResult:
+    async def plan(
+        self, transcript, language, flows, values, conversation_history=()
+    ) -> PlannerResult:
         return PlannerResult(
             flow_id="web_discovery",
             values={"site_name": "National Scholarship Portal"},
@@ -29,7 +31,9 @@ class YouTubePlanner:
     def __init__(self, query: str = "Arijit Singh songs") -> None:
         self.query = query
 
-    async def plan(self, transcript, language, flows, values) -> PlannerResult:
+    async def plan(
+        self, transcript, language, flows, values, conversation_history=()
+    ) -> PlannerResult:
         return PlannerResult(
             flow_id="web_discovery",
             values={"site_name": "YouTube", "web_query": self.query},
@@ -139,7 +143,7 @@ class WebDiscoveryTests(unittest.TestCase):
             )
             orchestrator = self.make_orchestrator(agent)
             task = await orchestrator.create_task(
-                "Find information on a public website", "en", "web"
+                "Find information on a public website", "en", "auto"
             )
             task = await self.wait_for_phase(orchestrator, task.task_id, "question")
 
@@ -224,7 +228,7 @@ class WebDiscoveryTests(unittest.TestCase):
                 ),
             )
             orchestrator = self.make_orchestrator(agent)
-            task = await orchestrator.create_task("Find a site", "en", "web")
+            task = await orchestrator.create_task("Find a site", "en", "auto")
             task = await self.wait_for_phase(orchestrator, task.task_id, "site_choice")
             event = orchestrator._history[task.task_id][-1]
 
@@ -295,7 +299,7 @@ class WebDiscoveryTests(unittest.TestCase):
                 ),
             )
             orchestrator = self.make_orchestrator(agent)
-            task = await orchestrator.create_task("Find a website", "en", "web")
+            task = await orchestrator.create_task("Find a website", "en", "auto")
             task = await self.wait_for_phase(orchestrator, task.task_id, "site_name")
 
             self.assertEqual(task.state, TaskState.NEEDS_INFO)
@@ -343,7 +347,7 @@ class WebDiscoveryTests(unittest.TestCase):
                 ),
             )
             orchestrator = self.make_orchestrator(agent)
-            task = await orchestrator.create_task("Find a site", "en", "web")
+            task = await orchestrator.create_task("Find a site", "en", "auto")
             task = await self.wait_for_phase(orchestrator, task.task_id, "question")
             task = await orchestrator.answer(task.task_id, "What is the policy?")
             self.assertEqual(task.state, TaskState.WAITING_FOR_APPROVAL)
@@ -444,7 +448,9 @@ class WebDiscoveryTests(unittest.TestCase):
     def test_explicit_youtube_search_reaches_approval_without_planner_or_search(self) -> None:
         async def scenario() -> None:
             class UnexpectedPlanner:
-                async def plan(self, transcript, language, flows, values):
+                async def plan(
+                    self, transcript, language, flows, values, conversation_history=()
+                ):
                     raise AssertionError("explicit YouTube searches bypass the planner")
 
             agent = WebsiteAgent()
@@ -474,6 +480,118 @@ class WebDiscoveryTests(unittest.TestCase):
                     for event in orchestrator._history[task.task_id]
                 )
             )
+
+        asyncio.run(scenario())
+
+    def test_explicit_https_url_skips_gemini_and_requires_approval(self) -> None:
+        async def scenario() -> None:
+            class UnexpectedPlanner:
+                async def plan(
+                    self, transcript, language, flows, values, conversation_history=()
+                ):
+                    raise AssertionError("explicit website mode must bypass Gemini")
+
+            agent = WebsiteAgent(
+                run_result(
+                    {
+                        "answer": "The shipping page lists the available delivery options.",
+                        "sources": [
+                            {
+                                "name": "Shipping",
+                                "url": "https://example.org/shipping",
+                            }
+                        ],
+                    },
+                    "site-read",
+                )
+            )
+            orchestrator = Orchestrator(
+                TaskStore(),
+                agent=agent,
+                submission_store=MockStore(Path(self.temp_dir.name) / "mock.db"),
+                planner=UnexpectedPlanner(),
+                website_search=agent,
+            )
+            task = await orchestrator.create_task(
+                "Find shipping fees at https://example.org/help", "en", "web"
+            )
+            task = await self.wait_for_approval(orchestrator, task.task_id)
+
+            self.assertEqual(task.state, TaskState.WAITING_FOR_APPROVAL)
+            self.assertEqual(task.selected_site_url, "https://example.org/help")
+            self.assertEqual(task.web_query, "shipping fees")
+            self.assertEqual(agent.search_queries, [])
+            self.assertEqual(agent.calls, [])
+            candidate = task.web_candidates[0]
+            self.assertEqual(candidate.confidence, "low")
+            self.assertIn("not independently verified", candidate.reason)
+
+            task = await orchestrator.approve(
+                task.task_id,
+                ApproveRequest(approval_id=task.approval_id),
+            )
+
+            self.assertEqual(task.state, TaskState.DONE)
+            self.assertEqual(agent.calls[0][0], "https://example.org/help")
+            self.assertIn("shipping fees", agent.calls[0][1])
+
+        asyncio.run(scenario())
+
+    def test_web_mode_requests_safe_url_and_search_question_before_approval(self) -> None:
+        async def scenario() -> None:
+            class UnexpectedPlanner:
+                async def plan(
+                    self, transcript, language, flows, values, conversation_history=()
+                ):
+                    raise AssertionError("explicit website mode must bypass Gemini")
+
+            agent = WebsiteAgent()
+            orchestrator = Orchestrator(
+                TaskStore(),
+                agent=agent,
+                submission_store=MockStore(Path(self.temp_dir.name) / "mock.db"),
+                planner=UnexpectedPlanner(),
+                website_search=agent,
+            )
+            task = await orchestrator.create_task("Explore a website", "en", "web")
+            task = await self.wait_for_phase(orchestrator, task.task_id, "site_name")
+
+            self.assertEqual(task.state, TaskState.NEEDS_INFO)
+            self.assertIn("HTTPS", task.clarifying_question_en)
+            self.assertEqual(agent.search_queries, [])
+
+            with self.assertRaisesRegex(ValueError, "HTTPS"):
+                await orchestrator.answer(task.task_id, "http://127.0.0.1/")
+
+            task = await orchestrator.answer(
+                task.task_id, "https://public.example.org/"
+            )
+            self.assertEqual(task.state, TaskState.NEEDS_INFO)
+            self.assertEqual(task.web_phase, "question")
+            self.assertEqual(task.selected_site_url, "https://public.example.org/")
+            self.assertEqual(agent.calls, [])
+            self.assertEqual(agent.search_queries, [])
+
+            task = await orchestrator.answer(task.task_id, "Find the contact page")
+            self.assertEqual(task.state, TaskState.WAITING_FOR_APPROVAL)
+            self.assertEqual(task.web_query, "Find the contact page")
+            self.assertEqual(agent.calls, [])
+
+        asyncio.run(scenario())
+
+    def test_web_mode_rejects_unsafe_provided_url_before_approval(self) -> None:
+        async def scenario() -> None:
+            agent = WebsiteAgent()
+            orchestrator = self.make_orchestrator(agent)
+            task = await orchestrator.create_task(
+                "Read https://127.0.0.1/admin", "en", "web"
+            )
+            task = await self.wait_for_phase(orchestrator, task.task_id, "site_name")
+
+            self.assertEqual(task.state, TaskState.NEEDS_INFO)
+            self.assertIsNone(task.selected_site_url)
+            self.assertEqual(agent.calls, [])
+            self.assertEqual(agent.search_queries, [])
 
         asyncio.run(scenario())
 

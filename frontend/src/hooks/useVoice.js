@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { recognitionLocale, resolvedLang } from "../utils/messages.js";
-import { recognitionErrorKey } from "../utils/voice.js";
+import {
+  recognitionErrorKey,
+  resetVoiceSilenceTimer,
+} from "../utils/voice.js";
 
 function getRecognitionCtor() {
   if (typeof window === "undefined") return null;
@@ -27,6 +30,9 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
   });
 
   const recognitionRef = useRef(null);
+  const listeningRequestedRef = useRef(false);
+  const silenceTimerRef = useRef(null);
+  const restartTimerRef = useRef(null);
   const lastSpokenRef = useRef("");
   const onFinalRef = useRef(onFinal);
   const onInterimRef = useRef(onInterim);
@@ -72,6 +78,11 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
   );
 
   const stopListening = useCallback(() => {
+    listeningRequestedRef.current = false;
+    clearTimeout(silenceTimerRef.current);
+    clearTimeout(restartTimerRef.current);
+    silenceTimerRef.current = null;
+    restartTimerRef.current = null;
     const recognition = recognitionRef.current;
     if (recognition) {
       try {
@@ -106,49 +117,81 @@ export function useVoice({ language, onFinal, onInterim, enabled = true } = {}) 
       }
     }
 
-    const recognition = new Ctor();
-    recognition.lang = recognitionLocale(language);
-    recognition.interimResults = true;
-    recognition.continuous = false;
-    recognition.maxAlternatives = 1;
+    listeningRequestedRef.current = true;
+    const startRecognition = () => {
+      if (!listeningRequestedRef.current) return;
+      const recognition = new Ctor();
+      recognition.lang = recognitionLocale(language);
+      recognition.interimResults = true;
+      recognition.continuous = true;
+      recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => {
-      setListening(false);
-      recognitionRef.current = null;
-    };
-    recognition.onerror = (event) => {
-      const err = event?.error;
-      if (err === "not-allowed") {
-        setSupport((current) => ({ ...current, permission: "denied" }));
-      }
-      setRecognitionError(recognitionErrorKey(err));
-      setListening(false);
-      recognitionRef.current = null;
-    };
-    recognition.onresult = (event) => {
-      let interim = "";
-      let finalText = "";
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        const text = result[0]?.transcript || "";
-        if (result.isFinal) finalText += text;
-        else interim += text;
-      }
-      if (interim) onInterimRef.current?.(interim);
-      if (finalText) {
-        setRecognitionError(null);
-        onFinalRef.current?.(finalText.trim());
-      }
-    };
+      recognition.onstart = () => {
+        setListening(true);
+        if (silenceTimerRef.current === null) {
+          resetVoiceSilenceTimer(silenceTimerRef, stopListening);
+        }
+      };
+      recognition.onend = () => {
+        if (recognitionRef.current !== recognition) return;
+        recognitionRef.current = null;
+        if (listeningRequestedRef.current && restartTimerRef.current === null) {
+          restartTimerRef.current = setTimeout(() => {
+            restartTimerRef.current = null;
+            startRecognition();
+          }, 100);
+        } else if (!listeningRequestedRef.current) {
+          setListening(false);
+        }
+      };
+      recognition.onerror = (event) => {
+        const err = event?.error;
+        if (err === "no-speech" && listeningRequestedRef.current) return;
+        if (err === "not-allowed") {
+          setSupport((current) => ({ ...current, permission: "denied" }));
+        }
+        listeningRequestedRef.current = false;
+        clearTimeout(silenceTimerRef.current);
+        clearTimeout(restartTimerRef.current);
+        silenceTimerRef.current = null;
+        restartTimerRef.current = null;
+        setRecognitionError(recognitionErrorKey(err));
+        setListening(false);
+        recognitionRef.current = null;
+      };
+      recognition.onresult = (event) => {
+        let interim = "";
+        let finalText = "";
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          const text = result[0]?.transcript || "";
+          if (result.isFinal) finalText += text;
+          else interim += text;
+        }
+        if (interim || finalText) {
+          resetVoiceSilenceTimer(silenceTimerRef, stopListening);
+        }
+        if (interim) onInterimRef.current?.(interim);
+        if (finalText) {
+          setRecognitionError(null);
+          onFinalRef.current?.(finalText.trim());
+        }
+      };
 
-    recognitionRef.current = recognition;
-    try {
-      recognition.start();
-    } catch {
-      setRecognitionError("micRecognitionError");
-      setListening(false);
-    }
+      recognitionRef.current = recognition;
+      try {
+        recognition.start();
+      } catch {
+        listeningRequestedRef.current = false;
+        clearTimeout(silenceTimerRef.current);
+        clearTimeout(restartTimerRef.current);
+        silenceTimerRef.current = null;
+        restartTimerRef.current = null;
+        setRecognitionError("micRecognitionError");
+        setListening(false);
+      }
+    };
+    startRecognition();
   }, [enabled, language, stopListening, stopSpeech]);
 
   useEffect(

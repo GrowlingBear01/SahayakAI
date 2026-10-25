@@ -143,12 +143,22 @@ class TaskState(StrEnum):
     OUTCOME_UNKNOWN = "outcome_unknown"
 
 
+class ConversationTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class Task(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str = Field(min_length=1, max_length=64)
     state: TaskState = TaskState.PLANNING
     requested_flow: Literal["auto", "demo", "discovery", "web"] = "auto"
+    conversation_history: list[ConversationTurn] = Field(
+        default_factory=list, max_length=12, exclude=True
+    )
     flow_id: str | None = None
     values: dict[str, str | int] = Field(default_factory=dict)
     missing: list[str] = Field(default_factory=list)
@@ -174,6 +184,8 @@ class Task(BaseModel):
     error_hi: str | None = None
     clarifying_question_en: str | None = None
     clarifying_question_hi: str | None = None
+    assistant_response_en: str | None = None
+    assistant_response_hi: str | None = None
 
 
 class CreateTaskRequest(BaseModel):
@@ -182,6 +194,7 @@ class CreateTaskRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     lang: Literal["hi", "en", "auto"] = "auto"
     flow: Literal["auto", "demo", "discovery", "web"] = "auto"
+    history: list[ConversationTurn] = Field(default_factory=list, max_length=12)
 
 
 class AnswerRequest(BaseModel):

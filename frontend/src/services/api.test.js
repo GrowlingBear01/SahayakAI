@@ -20,7 +20,7 @@ describe("api contract", () => {
     expect(isHealthy({ ok: false })).toBe(false);
   });
 
-  it("POSTs { text, lang, flow } to /tasks", async () => {
+  it("POSTs a general-assistant request with conversation history to /tasks", async () => {
     globalThis.fetch = vi.fn(async (url, options) => {
       expect(String(url)).toMatch(/\/tasks$/);
       expect(options.method).toBe("POST");
@@ -28,6 +28,7 @@ describe("api contract", () => {
         text: "Fill the demo form",
         lang: "en",
         flow: "auto",
+        history: [],
       });
       return new Response(JSON.stringify({ task_id: "t1" }), {
         status: 200,
@@ -44,10 +45,28 @@ describe("api contract", () => {
         text: "National Scholarship Portal",
         lang: "en",
         flow: "web",
+        history: [],
       });
       return new Response(JSON.stringify({ task_id: "t2" }), { status: 200 });
     });
     await api.createTask("National Scholarship Portal", "en", "web");
+  });
+
+  it("sends bounded conversation context with a follow-up request", async () => {
+    const history = [
+      { role: "user", text: "Draft a thank-you note." },
+      { role: "assistant", text: "Who is it for?" },
+    ];
+    globalThis.fetch = vi.fn(async (_url, options) => {
+      expect(JSON.parse(options.body)).toEqual({
+        text: "Make it warmer.",
+        lang: "en",
+        flow: "auto",
+        history,
+      });
+      return new Response(JSON.stringify({ task_id: "t3" }), { status: 200 });
+    });
+    await api.createTask("Make it warmer.", "en", "auto", history);
   });
 
   it("sends approval_id and edits exactly", async () => {

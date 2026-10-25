@@ -48,7 +48,8 @@ function resultFromEvent(event) {
 
 export function useAssistant() {
   const [language, setLanguage] = useState("en");
-  const [flow, setFlow] = useState("demo");
+  const [flow, setFlow] = useState("auto");
+  const [conversationHistory, setConversationHistory] = useState([]);
   const [typed, setTyped] = useState("");
   const [transcript, setTranscript] = useState("");
   const [userUtterance, setUserUtterance] = useState("");
@@ -79,6 +80,10 @@ export function useAssistant() {
   const approvalLock = useRef(null);
   const taskIdRef = useRef(null);
   const taskStateRef = useRef(null);
+  const conversationHistoryRef = useRef([]);
+  const activeTaskTurnsRef = useRef([]);
+  const userUtteranceRef = useRef("");
+  const recordedTasksRef = useRef(new Set());
   const typedRef = useRef(typed);
   const voiceDraftPendingRef = useRef(false);
   const voiceDraftTextRef = useRef("");
@@ -104,6 +109,10 @@ export function useAssistant() {
     setConnection("live");
     const text = eventMessage(event, lang);
     setAssistantText(text);
+    if (event.state === "needs_info") {
+      setBusy(false);
+      inFlight.current = false;
+    }
 
     const url = extractStreamingUrl(event.data);
     if (url) {
@@ -120,8 +129,19 @@ export function useAssistant() {
     if (event.state === "waiting_for_approval") {
       const nextApproval = approvalFromEvent(event);
       setApproval(nextApproval);
-      const selectedSite = flowRef.current === "demo" ? "demo" : "real";
-      setFlowMismatch(Boolean(nextApproval?.site_kind && nextApproval.site_kind !== selectedSite));
+      const selectedSite =
+        flowRef.current === "demo"
+          ? "demo"
+          : flowRef.current === "web" || flowRef.current === "discovery"
+            ? "real"
+            : null;
+      setFlowMismatch(
+        Boolean(
+          selectedSite &&
+            nextApproval?.site_kind &&
+            nextApproval.site_kind !== selectedSite,
+        ),
+      );
       const fields = fieldsWithKeys(nextApproval, {});
       const readback =
         resolvedLang(lang) === "hi"
@@ -149,6 +169,24 @@ export function useAssistant() {
       setResult(nextResult);
       setBusy(false);
       inFlight.current = false;
+      if (
+        !recordedTasksRef.current.has(event.task_id) &&
+        userUtteranceRef.current.trim()
+      ) {
+        recordedTasksRef.current.add(event.task_id);
+        const answer =
+          nextResult.web_answer ||
+          (lang === "hi" ? nextResult.summary_hi : nextResult.summary_en) ||
+          text;
+        const nextHistory = [
+          ...conversationHistoryRef.current,
+          ...activeTaskTurnsRef.current,
+          { role: "assistant", text: answer.slice(0, 2000) },
+        ].slice(-12);
+        conversationHistoryRef.current = nextHistory;
+        setConversationHistory(nextHistory);
+        activeTaskTurnsRef.current = [];
+      }
     }
   }, []);
 
@@ -225,8 +263,12 @@ export function useAssistant() {
       setFlowMismatch(false);
       return;
     }
+    if (flow === "auto") {
+      setFlowMismatch(false);
+      return;
+    }
     const selectedSite = flow === "demo" ? "demo" : "real";
-    setFlowMismatch(approval.site_kind !== selectedSite);
+    setFlowMismatch(Boolean(approval.site_kind && approval.site_kind !== selectedSite));
   }, [approval, flow]);
 
   useTaskEvents(taskId, {
@@ -354,6 +396,10 @@ export function useAssistant() {
       if (taskIdRef.current && taskStateRef.current === "needs_info") {
         if (answering.current) return;
         answering.current = true;
+        activeTaskTurnsRef.current = [
+          ...activeTaskTurnsRef.current,
+          { role: "user", text },
+        ].slice(-11);
         setTaskState("planning");
         try {
           await api.answer(taskIdRef.current, text);
@@ -379,6 +425,8 @@ export function useAssistant() {
       setBrowserStarted(false);
       setFlowMismatch(false);
       setUserUtterance(text);
+      userUtteranceRef.current = text;
+      activeTaskTurnsRef.current = [{ role: "user", text }];
       setAssistantText("");
       setTranscript("");
       spokenKeys.current = new Set();
@@ -386,7 +434,12 @@ export function useAssistant() {
 
       const lang = language === "auto" ? "auto" : language;
       try {
-        const created = await api.createTask(text, lang, flowRef.current);
+        const created = await api.createTask(
+          text,
+          lang,
+          flowRef.current,
+          conversationHistoryRef.current,
+        );
         if (!created?.task_id) throw new Error("missing_task_id");
         setTaskId(created.task_id);
         setTaskState("planning");
@@ -476,6 +529,7 @@ export function useAssistant() {
     setResult(null);
     setBusy(false);
     setUserUtterance("");
+    userUtteranceRef.current = "";
     setAssistantText("");
     setTranscript("");
     updateTyped("");
@@ -483,6 +537,10 @@ export function useAssistant() {
     voiceDraftTextRef.current = "";
     setVoiceDraftPending(false);
     setFlowMismatch(false);
+    conversationHistoryRef.current = [];
+    activeTaskTurnsRef.current = [];
+    recordedTasksRef.current = new Set();
+    setConversationHistory([]);
     setToast(null);
   }, [updateTyped, voice]);
 
@@ -513,6 +571,7 @@ export function useAssistant() {
     setLanguage,
     flow,
     setFlow,
+    conversationHistory,
     typed,
     setTyped,
     transcript,

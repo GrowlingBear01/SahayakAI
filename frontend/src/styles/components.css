@@ -158,6 +158,9 @@
   display: grid;
   gap: 10px;
   text-align: left;
+  max-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .transcript p {

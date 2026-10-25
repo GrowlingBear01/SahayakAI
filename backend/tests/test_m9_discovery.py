@@ -15,7 +15,9 @@ from mock_site.store import MockStore
 
 
 class DiscoveryPlanner:
-    async def plan(self, transcript, language, flows, values) -> PlannerResult:
+    async def plan(
+        self, transcript, language, flows, values, conversation_history=()
+    ) -> PlannerResult:
         return PlannerResult(
             flow_id="myscheme_discovery",
             values={"age": "72", "state": "Delhi"},

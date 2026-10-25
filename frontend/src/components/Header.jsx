@@ -1,7 +1,8 @@
 import { t } from "../utils/messages.js";
 
 export default function Header({ language, onLanguage, flow, onFlow }) {
-  const badge = flow === "demo" ? "demoForm" : "realWebsite";
+  const badge =
+    flow === "demo" ? "demoForm" : flow === "web" ? "realWebsite" : "assistantMode";
   const badgeLabel = t(badge, language);
 
   return (
@@ -24,14 +25,14 @@ export default function Header({ language, onLanguage, flow, onFlow }) {
           </select>
         </label>
         <label className="control">
-          {t("flow", language)}
+          {t("mode", language)}
           <select
             value={flow}
             onChange={(event) => onFlow(event.target.value)}
-            aria-label={t("flow", language)}
+            aria-label={t("mode", language)}
           >
+            <option value="auto">{t("assistantMode", language)}</option>
             <option value="demo">{t("demo", language)}</option>
-            <option value="discovery">{t("discovery", language)}</option>
             <option value="web">{t("anyWebsite", language)}</option>
           </select>
         </label>
