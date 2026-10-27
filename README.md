@@ -470,11 +470,4 @@ Check browser permissions, microphone access, and Web Speech API support. Switch
 
 Do not automatically repeat the submission. Inspect the mock site's stored record and the task evidence first; uncertainty is intentionally distinct from verified success.
 
-## Team responsibilities
-
-- **Owner A:** Backend APIs, orchestration, Gemini planning, TinyFish integration, submission verification, safety, and testing.
-- **Owner B:** Frontend, voice interaction, accessibility, UI integration, and demo presentation.
-
----
-
 SahayakAI is a hackathon prototype developed in milestones. Favor a reproducible demo, clear user approval, and honest result reporting over attempting to automate every website.
